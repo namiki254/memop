@@ -74,6 +74,13 @@ export function PinPanel({
     }
   }
 
+  function cancelEditing() {
+    setTitle(pin?.title ?? "");
+    setContent(pin?.content ?? "");
+    setPinType(pin?.pin_type ?? PIN_TYPES[0].value);
+    setIsEditing(false);
+  }
+
   return (
     <div className="fixed inset-x-0 bottom-0 z-10 border-t border-slate-200 bg-white p-4 shadow-lg sm:inset-x-auto sm:right-4 sm:bottom-4 sm:w-80 sm:rounded sm:border">
       {/* 
@@ -96,7 +103,7 @@ export function PinPanel({
             <button
               type="button"
               // キャンセル時の動きを切り替える
-              onClick={isNew ? onClose : () => setIsEditing(false)}
+              onClick={isNew ? onClose : cancelEditing}
               disabled={saving}
               className="text-sm text-slate-500 underline disabled:opacity-50"
             >

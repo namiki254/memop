@@ -117,7 +117,7 @@ export default function MapDetail() {
   }
 
   /** パネルの入力を pins テーブルに保存する */
-  async function handleSavePin({ title, content }) {
+  async function handleSavePin({ title, content, pinType }) {
     if (savingPin || !selectedPin) return;
 
     setSavingPin(true);
@@ -132,7 +132,7 @@ export default function MapDetail() {
           y: selectedPin.y,
           title,
           content,
-          pin_type: "default",
+          pin_type: "pinType",
         })
         .select()
         .single();
