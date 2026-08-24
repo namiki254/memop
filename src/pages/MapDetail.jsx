@@ -132,7 +132,7 @@ export default function MapDetail() {
           y: selectedPin.y,
           title,
           content,
-          pin_type: pinType,
+          pin_type: "pinType",
         })
         .select()
         .single();
@@ -150,6 +150,79 @@ export default function MapDetail() {
       setSelectedPin(null);
     } catch (e) {
       console.error("ピンの保存中に予期しないエラー", e);
+      setPinError(`予期しないエラーが発生しました．${e?.message ?? e}`);
+    } finally {
+      setSavingPin(false);
+    }
+  }
+
+  /** パネルで編集した内容を更新する */
+  async function handleUpdatePin({ title, content, pinType }) {
+    if (savingPin || !selectedPin) return;
+
+    setSavingPin(true);
+    setPinError("");
+
+    try {
+      const { data: updated, error: updateError } = await supabase
+        .from("pins")
+        .update({
+          title,
+          content,
+          pin_type: pinType,
+        })
+        .eq("id", selectedPin.id)
+        .select()
+        .single();
+
+      if (updateError) {
+        console.error("ピンの更新に失敗", updateError);
+        setPinError(`更新に失敗しました．${updateError.message}`);
+        return;
+      }
+
+      // 手元の配列を書き換えて画面に即時反映
+      setPins((current) =>
+        current.map((p) => (p.id === updated.id ? updated : p))
+      );
+      setSelectedPin(null);
+    } catch (e) {
+      console.error("ピンの更新中に予期しないエラー", e);
+      setPinError(`予期しないエラーが発生しました．${e?.message ?? e}`);
+    } finally {
+      setSavingPin(false);
+    }
+  }
+
+  /** ピンを削除する */
+  async function handleDeletePin() {
+    if (savingPin || !selectedPin) return;
+
+    // 通信の前に確認ダイアログを出す
+    if (!window.confirm("このピンを削除しますか？")) {
+      return;
+    }
+
+    setSavingPin(true);
+    setPinError("");
+
+    try {
+      const { error: deleteError } = await supabase
+        .from("pins")
+        .delete()
+        .eq("id", selectedPin.id);
+
+      if (deleteError) {
+        console.error("ピンの削除に失敗", deleteError);
+        setPinError(`削除に失敗しました．${deleteError.message}`);
+        return;
+      }
+
+      // 手元の配列から対象のピンを除外
+      setPins((current) => current.filter((p) => p.id !== selectedPin.id));
+      setSelectedPin(null);
+    } catch (e) {
+      console.error("ピンの削除中に予期しないエラー", e);
       setPinError(`予期しないエラーが発生しました．${e?.message ?? e}`);
     } finally {
       setSavingPin(false);
@@ -215,6 +288,9 @@ export default function MapDetail() {
           error={pinError}
           onSave={handleSavePin}
           onClose={closePanel}
+          // Update, Deleteを追加
+          onUpdate={handleUpdatePin}
+          onDelete={handleDeletePin}
         />
       )}
     </div>
