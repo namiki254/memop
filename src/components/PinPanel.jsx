@@ -34,6 +34,7 @@ export function PinPanel({
   const [content, setContent] = useState("");
   const [pinType, setPinType] = useState(PIN_TYPES[0].value);
   // 編集中のモードを追加
+  const [customPinType, setCustomPinType] = useState("");
   const [isEditing, setIsEditing] = useState(false);
 
   // 別のピンを選び直したときに入力欄を作り直す．
@@ -153,6 +154,19 @@ export function PinPanel({
                 {type.emoji} {type.label}
               </button>
             ))}
+              <button
+                type="button"
+                onClick={() => setPinType("custom")}
+                disabled={saving}
+                aria-pressed={pinType === "custom"}
+                className={`rounded-full border px-2.5 py-1 text-xs disabled:opacity-50 ${
+                  pinType === "custom"
+                  ? "border-slate-800 bg-slate-800 text-white"
+                  : "border-slate-300 text-slate-600"
+                  }`}
+              >
+                ✏️ 自由入力
+               </button>
           </div>
 
           {error && (
