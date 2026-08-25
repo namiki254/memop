@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import Loading from "../components/Loading";
 import ErrorMessage from "../components/ErrorMessage";
@@ -18,6 +18,7 @@ import { PinPanel } from "../components/PinPanel";
 export default function MapDetail() {
   // /maps/:id の :id を取得する
   const { id } = useParams();
+  const navigate = useNavigate();
   // Supabaseから取得したデータを保存する
   const [map, setMap] = useState(null);
   const [pins, setPins] = useState([]);
@@ -38,6 +39,9 @@ export default function MapDetail() {
   // 同じフォルダに入っている他のマップ（#65のフォルダ機能が前提）．
   // フォルダに入っていないマップ（folder_id が null）では空のまま．
   const [siblingMaps, setSiblingMaps] = useState([]);
+
+  // ボタン種類のピン（#67）の移動先として選べる，全マップの一覧．
+  const [allMaps, setAllMaps] = useState([]);
 
   // マップとピンを取得する
   const loadMapDetail = useCallback(async () => {
@@ -124,6 +128,22 @@ export default function MapDetail() {
     };
   }, [map?.folder_id]);
 
+  // ボタンの移動先ピッカーに使う，全マップの一覧．最初に1回だけ取る．
+  useEffect(() => {
+    async function loadAllMaps() {
+      const { data, error: allMapsError } = await supabase
+        .from("maps")
+        .select("id, title")
+        .order("title");
+
+      if (!allMapsError) {
+        setAllMaps(data ?? []);
+      }
+    }
+
+    loadAllMaps();
+  }, []);
+
   /** 画像の何もない場所がクリックされた．そこに新しいピンを作る準備をする */
   function handleMapClick(x, y) {
     setPinError("");
@@ -132,6 +152,15 @@ export default function MapDetail() {
 
   /** 既にあるピンがクリックされた．中身を表示する */
   function handlePinClick(pin) {
+    // ボタンのピンは，押した瞬間に移動先のマップへ移る（パネルは開かない）．
+    // 移動先が消えている（link_map_id が無い）ときだけ，直せるようパネルを開く．
+    if (pin.kind === "button") {
+      if (pin.link_map_id) {
+        navigate(`/maps/${pin.link_map_id}`);
+        return;
+      }
+    }
+
     setPinError("");
     setSelectedPin(pin);
   }
@@ -150,7 +179,7 @@ export default function MapDetail() {
   }
 
   /** パネルの入力を pins テーブルに保存する */
-  async function handleSavePin({ title, content, pinType }) {
+  async function handleSavePin({ title, content, pinType, kind, linkMapId }) {
     if (savingPin || !selectedPin) return;
 
     setSavingPin(true);
@@ -166,6 +195,8 @@ export default function MapDetail() {
           title,
           content,
           pin_type: pinType,
+          kind,
+          link_map_id: kind === "button" ? linkMapId : null,
         })
         .select()
         .single();
@@ -190,7 +221,7 @@ export default function MapDetail() {
   }
 
   /** パネルで編集した内容を更新する */
-  async function handleUpdatePin({ title, content, pinType }) {
+  async function handleUpdatePin({ title, content, pinType, kind, linkMapId }) {
     if (savingPin || !selectedPin) return;
 
     setSavingPin(true);
@@ -203,6 +234,8 @@ export default function MapDetail() {
           title,
           content,
           pin_type: pinType,
+          kind,
+          link_map_id: kind === "button" ? linkMapId : null,
         })
         .eq("id", selectedPin.id)
         .select()
@@ -320,6 +353,7 @@ export default function MapDetail() {
             pin={selectedPin}
             saving={savingPin}
             error={pinError}
+            mapOptions={allMaps.filter((m) => m.id !== id)}
             onSave={handleSavePin}
             onClose={closePanel}
             // Update, Deleteを追加

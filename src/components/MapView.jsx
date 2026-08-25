@@ -94,7 +94,7 @@ export function MapView({ map, pins = [], onPinClick, onMapClick }) {
               title={pin.title}
             >
               <span className="text-2xl drop-shadow">
-                {getPinEmoji(pin.pin_type)}
+                {pin.kind === "button" ? "🔗" : getPinEmoji(pin.pin_type)}
               </span>
             </button>
           ))}
