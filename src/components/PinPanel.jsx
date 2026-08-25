@@ -52,7 +52,16 @@ export function PinPanel({
     setIsEditing(false);
     setTitle(pin?.title ?? "");
     setContent(pin?.content ?? "");
-    setPinType(pin?.pin_type ?? PIN_TYPES[0].value);
+
+    // 既存4種類に含まれない場合は自由入力として扱う
+    const isCustomPinType =
+      pin?.pin_type &&
+      !PIN_TYPES.some((type) => type.value === pin.pin_type);
+
+    setPinType(
+      isCustomPinType ? "custom" : pin?.pin_type ?? PIN_TYPES[0].value
+    );
+    setCustomPinType(isCustomPinType ? pin.pin_type : "");
   }, [key, pin])
 
   // function handleSubmit(event) {
@@ -83,7 +92,14 @@ export function PinPanel({
   function cancelEditing() {
     setTitle(pin?.title ?? "");
     setContent(pin?.content ?? "");
-    setPinType(pin?.pin_type ?? PIN_TYPES[0].value);
+    // 既存4種類に含まれない場合は自由入力として元に戻す
+    const isCustomPinType =
+      pin?.pin_type &&
+      !PIN_TYPES.some((type) => type.value === pin.pin_type);
+    setPinType(
+      isCustomPinType ? "custom" : pin?.pin_type ?? PIN_TYPES[0].value
+    );
+    setCustomPinType(isCustomPinType ? pin.pin_type : "");
     setIsEditing(false);
   }
 
