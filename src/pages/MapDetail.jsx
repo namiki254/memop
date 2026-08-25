@@ -132,7 +132,7 @@ export default function MapDetail() {
           y: selectedPin.y,
           title,
           content,
-          pin_type: "pinType",
+          pin_type: pinType,
         })
         .select()
         .single();
