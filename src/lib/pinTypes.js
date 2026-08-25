@@ -22,9 +22,10 @@ const FALLBACK_EMOJI = "📍";
 
 /**
  * pin_type に対応する絵文字を返す．
- * 一覧に無い値（今後知らない種類が増えた場合など）が来ても，
- * 既定の📍にフォールバックして表示が崩れないようにする．
+ * 一覧にある種類は対応する絵文字を返し，
+ * 自由入力された値はそのまま表示する．
+ * 値が無い場合だけ📍にフォールバックする．
  */
 export function getPinEmoji(pinType) {
-  return EMOJI_BY_TYPE[pinType] ?? FALLBACK_EMOJI;
+  return EMOJI_BY_TYPE[pinType] ?? pinType ?? FALLBACK_EMOJI;
 }

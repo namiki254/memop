@@ -68,10 +68,15 @@ export function PinPanel({
     if (saving) return;
     if (!title.trim()) return;
     // isNewか否かで呼び出す関数（onSave or onUpdate）切り替える
+    // 自由入力の場合は、入力された文字をピンの種類として保存する
+    const savedPinType =
+      pinType === "custom" ? customPinType.trim() : pinType;
+    // 自由入力が空欄の場合は保存しない
+    if (pinType === "custom" && !customPinType.trim()) return;
     if (isNew) {
-      onSave?.({ title: title.trim(), content: content.trim(), pinType });
+      onSave?.({ title: title.trim(), content: content.trim(), pinType: savedPinType });
     } else {
-      onUpdate?.({ title: title.trim(), content: content.trim(), pinType });
+      onUpdate?.({ title: title.trim(), content: content.trim(), pinType: savedPinType });
     }
   }
 
@@ -154,6 +159,7 @@ export function PinPanel({
                 {type.emoji} {type.label}
               </button>
             ))}
+             {/* 自由入力を選択するボタン */}
               <button
                 type="button"
                 onClick={() => setPinType("custom")}
@@ -166,9 +172,20 @@ export function PinPanel({
                   }`}
               >
                 ✏️ 自由入力
-               </button>
+             </button>
           </div>
-
+          {/* 自由入力を選んだときだけ入力欄を表示する */}
+          {pinType === "custom" && (
+            <input
+              type="text"
+              value={customPinType}
+              onChange={(e) => setCustomPinType(e.target.value)}
+              disabled={saving}
+              maxLength={4}
+              placeholder="例：🐱 / 猫"
+              className="mt-2 w-full rounded border border-slate-300 px-3 py-2 text-sm disabled:bg-slate-100"
+              />
+          )}
           {error && (
             <p className="mt-2 rounded bg-red-50 p-2 text-sm text-red-700">
               {error}
@@ -177,7 +194,11 @@ export function PinPanel({
 
           <button
             type="submit"
-            disabled={saving || title.trim() === ""}
+            disabled={
+              saving || 
+              title.trim() === ""||
+              (pinType === "custom" && customPinType.trim() === "")
+            }
             className="mt-3 w-full rounded bg-slate-800 px-4 py-2 text-sm text-white disabled:cursor-not-allowed disabled:bg-slate-300"
           >
             {/* {saving ? "保存中..." : "このピンを保存"} */}
