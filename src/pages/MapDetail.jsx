@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import Loading from "../components/Loading";
 import ErrorMessage from "../components/ErrorMessage";
@@ -34,6 +34,10 @@ export default function MapDetail() {
 
   // コピー状態を覚える
   const [copied, setCopied] = useState(false);
+
+  // 同じフォルダに入っている他のマップ（#65のフォルダ機能が前提）．
+  // フォルダに入っていないマップ（folder_id が null）では空のまま．
+  const [siblingMaps, setSiblingMaps] = useState([]);
 
   // マップとピンを取得する
   const loadMapDetail = useCallback(async () => {
@@ -90,6 +94,35 @@ export default function MapDetail() {
   useEffect(() => {
     loadMapDetail();
   }, [loadMapDetail]);
+
+  // 同じフォルダの他マップを取る．
+  // 依存を map?.folder_id（値）にしているので，同じフォルダ内で
+  // マップを切り替えても（id は変わるが folder_id は変わらない）取り直さない．
+  useEffect(() => {
+    if (!map?.folder_id) {
+      setSiblingMaps([]);
+      return;
+    }
+
+    let ignore = false;
+
+    async function loadSiblings() {
+      const { data, error: siblingsError } = await supabase
+        .from("maps")
+        .select("id, title")
+        .eq("folder_id", map.folder_id)
+        .order("created_at", { ascending: true });
+
+      if (!ignore && !siblingsError) {
+        setSiblingMaps(data ?? []);
+      }
+    }
+
+    loadSiblings();
+    return () => {
+      ignore = true;
+    };
+  }, [map?.folder_id]);
 
   /** 画像の何もない場所がクリックされた．そこに新しいピンを作る準備をする */
   function handleMapClick(x, y) {
@@ -249,49 +282,74 @@ export default function MapDetail() {
   }
 
   return (
-    <div className="flex h-full flex-col">
-      <div className="border-b border-slate-200 px-6 py-3">
+    <div className="flex h-full">
+      <div className="flex h-full flex-1 flex-col">
+        <div className="border-b border-slate-200 px-6 py-3">
 
-        {/* タイトルとコピーボタンを横並びにするためにflexを使用 */}
-        <div className="flex items-center justify-between">
-          <h2 className="text-lg font-bold text-slate-800">{map.title}</h2>
-          {/* コピーボタンを追加 */}
-          <button
-            onClick={copyUrl}
-            className="rounded-md bg-slate-100 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-200"
-          >
-            {copied ? "コピーしました！" : "このマップのURLをコピー"}
-          </button>
+          {/* タイトルとコピーボタンを横並びにするためにflexを使用 */}
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-bold text-slate-800">{map.title}</h2>
+            {/* コピーボタンを追加 */}
+            <button
+              onClick={copyUrl}
+              className="rounded-md bg-slate-100 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-200"
+            >
+              {copied ? "コピーしました！" : "このマップのURLをコピー"}
+            </button>
+          </div>
+
+          {map.description && (
+            <p className="mt-1 text-sm text-slate-500">{map.description}</p>
+          )}
+          <p className="mt-1 text-xs text-slate-400">
+            画像をクリックするとピンを立てられます．
+          </p>
         </div>
 
-        {map.description && (
-          <p className="mt-1 text-sm text-slate-500">{map.description}</p>
+        <div className="min-h-0 flex-1">
+          <MapView
+            map={map}
+            pins={pins}
+            onPinClick={handlePinClick}
+            onMapClick={handleMapClick}
+          />
+        </div>
+
+        {selectedPin && (
+          <PinPanel
+            pin={selectedPin}
+            saving={savingPin}
+            error={pinError}
+            onSave={handleSavePin}
+            onClose={closePanel}
+            // Update, Deleteを追加
+            onUpdate={handleUpdatePin}
+            onDelete={handleDeletePin}
+          />
         )}
-        <p className="mt-1 text-xs text-slate-400">
-          画像をクリックするとピンを立てられます．
-        </p>
       </div>
 
-      <div className="min-h-0 flex-1">
-        <MapView
-          map={map}
-          pins={pins}
-          onPinClick={handlePinClick}
-          onMapClick={handleMapClick}
-        />
-      </div>
-
-      {selectedPin && (
-        <PinPanel
-          pin={selectedPin}
-          saving={savingPin}
-          error={pinError}
-          onSave={handleSavePin}
-          onClose={closePanel}
-          // Update, Deleteを追加
-          onUpdate={handleUpdatePin}
-          onDelete={handleDeletePin}
-        />
+      {/* 同じフォルダの他マップへの切り替え．フォルダに入っていないマップでは出さない． */}
+      {siblingMaps.length > 0 && (
+        <aside className="w-48 shrink-0 overflow-auto border-l border-slate-200 p-3">
+          <p className="text-xs font-bold text-slate-400">同じフォルダのマップ</p>
+          <ul className="mt-2 space-y-1">
+            {siblingMaps.map((sibling) => (
+              <li key={sibling.id}>
+                <Link
+                  to={`/maps/${sibling.id}`}
+                  className={`block truncate rounded px-2 py-1.5 text-sm ${
+                    sibling.id === map.id
+                      ? "bg-slate-800 text-white"
+                      : "text-slate-700 hover:bg-slate-100"
+                  }`}
+                >
+                  {sibling.title}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </aside>
       )}
     </div>
   );
