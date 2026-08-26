@@ -5,6 +5,7 @@ import Loading from "../components/Loading";
 import ErrorMessage from "../components/ErrorMessage";
 import { MapView } from "../components/MapView";
 import { PinPanel } from "../components/PinPanel";
+import { PIN_TYPES } from "../lib/pinTypes";
 
 /**
  * マップ詳細ページ．
@@ -34,6 +35,44 @@ export default function MapDetail() {
 
   // コピー状態を覚える
   const [copied, setCopied] = useState(false);
+
+  // 表示するピンの種類を管理する
+  const [enabledTypes, setEnabledTypes] = useState(
+    () => new Set(PIN_TYPES.map((type) => type.value))
+  );
+
+  // ピンの表示・非表示を切り替えるhandle
+  function handleTypeToggle(typeId) {
+    setEnabledTypes((prev) => {
+      const next = new Set(prev);
+      if (next.has(typeId)) {
+        next.delete(typeId);
+      } else {
+        next.add(typeId);
+      }
+      return next;
+    });
+  }
+
+  // 全選択
+  function handleSelectAll() {
+    setEnabledTypes(new Set(PIN_TYPES.map((type) => type.value)));
+  }
+  // 全解除
+  function handleDeselectAll() {
+    setEnabledTypes(new Set());
+  }
+
+  // 表示対象のピンに絞り込む
+  // pi.pin_typeがnullやundefinedの場合も安全に判定できるように?.を使用
+  // const visiblePins = pins.filter((pin) => enabledTypes.has(pin?.pin_type));
+  const visiblePins = pins.filter((pin) => {
+    // pin_type が未設定（null/undefined/空文字）の場合はフォールバックとして表示
+    if (!pin?.pin_type) return true;
+    // （一時的にブラウザのコンソールで確認）
+    // console.log("pin_type:", pin.pin_type, "enabledTypes:", Array.from(enabledTypes));
+    return enabledTypes.has(pin.pin_type);
+  });
 
   // マップとピンを取得する
   const loadMapDetail = useCallback(async () => {
@@ -267,6 +306,48 @@ export default function MapDetail() {
         {map.description && (
           <p className="mt-1 text-sm text-slate-500">{map.description}</p>
         )}
+
+        {/* ピンの種類ごとの表示・非表示の切替 */}
+        <div className="mt-3 flex flex-wrap items-center gap-3 border-t border-slate-100 pt-3">
+          <span className="text-xs font-semibold text-slate-600">
+            表示フィルタ:
+          </span>
+
+          {/* 一括選択、解除 */}
+          <div className="flex items-center gap-1.5 mr-2">
+            <button
+              type="button"
+              onClick={handleSelectAll}
+              className="text-xs text-blue-600 hover:underline"
+            >
+              すべてオン
+            </button>
+            <span className="text-xs text-slate-300">|</span>
+            <button
+              type="button"
+              onClick={handleDeselectAll}
+              className="text-xs text-blue-600 hover:underline"
+            >
+              すべてオフ
+            </button>
+          </div>
+
+          {PIN_TYPES.map((type) => (
+            <label
+              key={type.value}
+              className="flex items-center gap-1.5 text-xs text-slate-700 cursor-pointer select-none"
+            >
+              <input
+                type="checkbox"
+                checked={enabledTypes.has(type.value)}
+                onChange={() => handleTypeToggle(type.value)}
+                className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+              />
+              <span>{type.emoji} {type.label}</span>
+            </label>
+          ))}
+        </div>
+
         <p className="mt-1 text-xs text-slate-400">
           画像をクリックするとピンを立てられます．
         </p>
@@ -275,7 +356,9 @@ export default function MapDetail() {
       <div className="min-h-0 flex-1">
         <MapView
           map={map}
-          pins={pins}
+          // pins={pins}
+          // visiblepinに変更
+          pins={visiblePins}
           onPinClick={handlePinClick}
           onMapClick={handleMapClick}
         />
