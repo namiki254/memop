@@ -2,6 +2,7 @@ import { Routes, Route, Link } from "react-router-dom";
 import MapList from "./pages/MapList.jsx";
 import MapUpload from "./pages/MapUpload.jsx";
 import MapDetail from "./pages/MapDetail.jsx";
+import AuthButton from "./components/AuthButton.jsx";
 // issue #28 用のテストページ追加
 import TestMapView from "./pages/TestMapView.jsx";
 
@@ -35,6 +36,8 @@ export default function App() {
         >
           新しいマップ
         </Link>
+
+        <AuthButton />
       </header>
 
       <main className="min-h-0 flex-1">
