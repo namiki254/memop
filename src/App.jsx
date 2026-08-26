@@ -1,4 +1,6 @@
 import { Routes, Route, Link } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
+import { supabase } from "./lib/supabase.js";
 import MapList from "./pages/MapList.jsx";
 import MapUpload from "./pages/MapUpload.jsx";
 import MapDetail from "./pages/MapDetail.jsx";
@@ -18,6 +20,19 @@ import TestMapView from "./pages/TestMapView.jsx";
  */
 
 export default function App() {
+  const navigate = useNavigate();
+  async function handleNewMap() {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      alert("新しいマップを作るにはログインしてください");
+      return;
+    }
+
+    navigate("/maps/new");
+  }
   return (
     <div className="flex h-screen flex-col">
       <header className="flex items-center justify-between border-b border-slate-200 px-6 py-3">
@@ -30,12 +45,13 @@ export default function App() {
           [テスト] MapView確認
         </Link>
 
-        <Link
-          to="/maps/new"
+        <button
+          type="button"
+          onClick={handleNewMap}
           className="rounded bg-slate-800 px-3 py-1.5 text-sm text-white"
         >
           新しいマップ
-        </Link>
+        </button>
 
         <AuthButton />
       </header>
