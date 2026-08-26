@@ -339,7 +339,7 @@ export default function MapDetail() {
                 onChange={() => handleTypeToggle(type.value)}
                 className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
               />
-              <span>{type.emoji} {type.label}</span>
+              <span>{type.emoji}: {type.label}</span>
             </label>
           ))}
         </div>
