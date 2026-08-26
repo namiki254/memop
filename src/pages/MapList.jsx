@@ -31,6 +31,8 @@ export default function MapList() {
   const [folderError, setFolderError] = useState("");
 
   useEffect(() => {
+    let cancelled = false;
+
     async function load() {
       setLoading(true);
       setError(null);
@@ -47,6 +49,7 @@ export default function MapList() {
             .eq("id", cursor)
             .single();
 
+          if (cancelled) return;
           if (folderError) throw folderError;
 
           if (!currentFolder) currentFolder = data;
@@ -67,6 +70,7 @@ export default function MapList() {
               .is("parent_folder_id", null)
               .order("name");
 
+        if (cancelled) return;
         if (foldersError) throw foldersError;
 
         const { data: mapsData, error: mapsError } = folderId
@@ -81,6 +85,7 @@ export default function MapList() {
               .is("folder_id", null)
               .order("created_at", { ascending: false });
 
+        if (cancelled) return;
         if (mapsError) throw mapsError;
 
         setFolder(currentFolder);
@@ -90,11 +95,18 @@ export default function MapList() {
       } catch (fetchError) {
         setError(fetchError);
       } finally {
-        setLoading(false);
+        if (!cancelled) {
+          setLoading(false);
+        }
       }
     }
 
     load();
+
+    // folderIdが変わったら、前の取得結果を無効にする
+    return () => {
+      cancelled = true;
+    };
   }, [folderId]);
 
   function startCreatingFolder() {
