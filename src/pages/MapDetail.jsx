@@ -64,13 +64,9 @@ export default function MapDetail() {
   }
 
   // 表示対象のピンに絞り込む
-  // pi.pin_typeがnullやundefinedの場合も安全に判定できるように?.を使用
-  // const visiblePins = pins.filter((pin) => enabledTypes.has(pin?.pin_type));
   const visiblePins = pins.filter((pin) => {
     // pin_type が未設定（null/undefined/空文字）の場合はフォールバックとして表示
     if (!pin?.pin_type) return true;
-    // （一時的にブラウザのコンソールで確認）
-    // console.log("pin_type:", pin.pin_type, "enabledTypes:", Array.from(enabledTypes));
     return enabledTypes.has(pin.pin_type);
   });
 
