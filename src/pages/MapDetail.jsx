@@ -92,8 +92,18 @@ export default function MapDetail() {
   }, [loadMapDetail]);
 
   /** 画像の何もない場所がクリックされた．そこに新しいピンを作る準備をする */
-  function handleMapClick(x, y) {
+  async function handleMapClick(x, y) {
     setPinError("");
+    
+    // 現在ログインしているユーザーを確認する
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      alert("ピンを作成するにはログインしてください");
+      return;
+    }
     setSelectedPin({ x, y });
   }
 
