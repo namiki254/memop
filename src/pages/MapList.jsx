@@ -93,7 +93,9 @@ export default function MapList() {
         setChildFolders(folders ?? []);
         setMaps(mapsData ?? []);
       } catch (fetchError) {
-        setError(fetchError);
+        if (!cancelled) {
+          setError(fetchError);
+        }
       } finally {
         if (!cancelled) {
           setLoading(false);
