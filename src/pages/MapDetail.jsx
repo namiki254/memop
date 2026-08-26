@@ -124,6 +124,16 @@ export default function MapDetail() {
     setPinError("");
 
     try {
+      // 現在ログインしているユーザーを取得する
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser();
+
+      if (userError || !user) {
+        setPinError("ピンを作成するにはログインしてください．");
+        return;
+      }
       const { data: created, error: insertError } = await supabase
         .from("pins")
         .insert({
@@ -133,6 +143,7 @@ export default function MapDetail() {
           title,
           content,
           pin_type: pinType,
+          user_id: user.id,
         })
         .select()
         .single();
