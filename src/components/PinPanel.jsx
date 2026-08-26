@@ -40,11 +40,6 @@ export function PinPanel({
   // pin.id が無い（新規作成）ときは座標を鍵にして，
   // 別の場所をクリックしたら空の状態に戻るようにする．
   const key = pin?.id ?? `${pin?.x}-${pin?.y}`;
-  // useEffect(() => {
-  //   setTitle("");
-  //   setContent("");
-  //   setPinType(PIN_TYPES[0].value);
-  // }, [key]);
 
   // ピンを選び直したときに入力欄に既存タイトルやメモが入るように変更
   useEffect(() => {
@@ -53,13 +48,6 @@ export function PinPanel({
     setContent(pin?.content ?? "");
     setPinType(pin?.pin_type ?? PIN_TYPES[0].value);
   }, [key, pin])
-
-  // function handleSubmit(event) {
-  //   event.preventDefault();
-  //   if (saving) return;
-  //   if (!title.trim()) return;
-  //   onSave?.({ title: title.trim(), content: content.trim(), pinType });
-  // }
 
   // 新規作成（onSave）と更新（onUpdate）を切り替える
   function handleSubmit(event) {
@@ -83,15 +71,6 @@ export function PinPanel({
 
   return (
     <div className="fixed inset-x-0 bottom-0 z-10 border-t border-slate-200 bg-white p-4 shadow-lg sm:inset-x-auto sm:right-4 sm:bottom-4 sm:w-80 sm:rounded sm:border">
-      {/* 
-      {isNew ? (
-        <form onSubmit={handleSubmit}>
-          <div className="flex items-center justify-between">
-            <p className="font-bold text-slate-800">ここにピンを立てる</p>
-            <button
-              type="button"
-              onClick={onClose}
-               */}
       {/* フォームを表示する条件にisEditingも追加 */}
       {isNew || isEditing ? ( // ★ isEditing も追加
         <form onSubmit={handleSubmit}>
