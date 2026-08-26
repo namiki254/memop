@@ -91,6 +91,43 @@ export default function MapDetail() {
     loadMapDetail();
   }, [loadMapDetail]);
 
+  // 他の人が置いた・書き直した・消したピンを，リロードなしで反映する．
+  //
+  // Supabase側で pins テーブルの変更配信（Replication）を有効にしておかないと，
+  // ここは何も受け取れない（#39のヒント参照）．
+  useEffect(() => {
+    const channel = supabase
+      .channel(`pins-of-map-${id}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "pins", filter: `map_id=eq.${id}` },
+        (payload) => {
+          if (payload.eventType === "INSERT") {
+            // 自分が置いたピンは，保存時にすでに手元へ足してある．
+            // 同じ id が来たら足さないことで，二重表示を防ぐ．
+            setPins((current) =>
+              current.some((p) => p.id === payload.new.id)
+                ? current
+                : [...current, payload.new],
+            );
+          } else if (payload.eventType === "UPDATE") {
+            setPins((current) =>
+              current.map((p) => (p.id === payload.new.id ? payload.new : p)),
+            );
+          } else if (payload.eventType === "DELETE") {
+            setPins((current) => current.filter((p) => p.id !== payload.old.id));
+          }
+        },
+      )
+      .subscribe();
+
+    // ページを離れる・別のマップに移るときは，必ず接続を切る．
+    // 切らないと，開くたびに接続が増え続ける．
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [id]);
+
   /** 画像の何もない場所がクリックされた．そこに新しいピンを作る準備をする */
   function handleMapClick(x, y) {
     setPinError("");
@@ -146,7 +183,11 @@ export default function MapDetail() {
       // 作られたピンを手元の一覧に足す．
       // ここで loadMapDetail() を呼び直すと，画面が一度「読み込み中...」に戻って
       // 地図が消えるので，ピンを1件足すだけのときは呼ばない．
-      setPins((current) => [...current, created]);
+      setPins((current) =>
+        current.some((p) => p.id === created.id)
+          ? current
+          : [...current, created],
+      );
       setSelectedPin(null);
     } catch (e) {
       console.error("ピンの保存中に予期しないエラー", e);
