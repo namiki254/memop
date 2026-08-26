@@ -183,7 +183,11 @@ export default function MapDetail() {
       // 作られたピンを手元の一覧に足す．
       // ここで loadMapDetail() を呼び直すと，画面が一度「読み込み中...」に戻って
       // 地図が消えるので，ピンを1件足すだけのときは呼ばない．
-      setPins((current) => [...current, created]);
+      setPins((current) =>
+        current.some((p) => p.id === created.id)
+          ? current
+          : [...current, created],
+      );
       setSelectedPin(null);
     } catch (e) {
       console.error("ピンの保存中に予期しないエラー", e);
