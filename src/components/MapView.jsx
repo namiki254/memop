@@ -1,6 +1,5 @@
+import { useState, useRef, useEffect } from "react";
 import { getPinEmoji } from "../lib/pinTypes";
-// reactからuseStateをインポート
-import { useState } from "react";
 
 /**
  * 地図表示コンポーネント．
@@ -23,6 +22,14 @@ export function MapView({ map, pins = [], onPinClick, onMapClick }) {
   const [scale, setScale] = useState(1);
   const [maxScale, setMaxScale] = useState(2); // フォールバック用初期値
 
+  // 初期（1倍時）の表示サイズと画像のアスペクト比を保持
+  const [baseSize, setBaseSize] = useState({
+    width: 0,
+    height: 0,
+    aspectRatio: 1,
+  });
+  const imgRef = useRef(null);
+
   const MIN_SCALE = 1; // 最小表示を1倍に設定
   const SCALE_STEP = 0.25; // 0.25刻みのスケール
 
@@ -33,13 +40,31 @@ export function MapView({ map, pins = [], onPinClick, onMapClick }) {
 
   // 画像読み込みのタイミングで、表示サイズ（clientWidth）と元画像サイズ（naturalWidth）からmaxScaleを計算
   const handleImageLoad = (e) => {
-    const { naturalWidth, clientWidth } = e.target;
-    if (clientWidth > 0) {
-      // 表示サイズに対する元画像のサイズ比率を計算（最低でも1.5倍は確保）
-      const calculatedMax = Math.max(naturalWidth / clientWidth, 1.5);
+    const { naturalWidth, naturalHeight, clientWidth, clientHeight } = e.target;
+    if (clientWidth > 0 && clientHeight > 0) {
+      const aspectRatio = naturalWidth / naturalHeight;
+      setBaseSize({ width: clientWidth, height: clientHeight, aspectRatio });
+
+      // 表示サイズに対する元画像のサイズ比率を計算（最低でも2倍は確保）
+      const calculatedMax = Math.max(naturalWidth / clientWidth, 2);
       setMaxScale(calculatedMax);
     }
   };
+
+  // ウィンドウサイズ変更時に1倍時の基準サイズを再計算
+  useEffect(() => {
+    const handleResize = () => {
+      if (imgRef.current && scale === 1) {
+        setBaseSize((prev) => ({
+          ...prev,
+          width: imgRef.current.clientWidth,
+          height: imgRef.current.clientHeight,
+        }));
+      }
+    };
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, [scale]);
 
   if (!map?.image_url) {
     return (
@@ -79,11 +104,12 @@ export function MapView({ map, pins = [], onPinClick, onMapClick }) {
     onMapClick(clamp(x), clamp(y));
   }
 
+  const isScaled = scale > 1 && baseSize.width > 0;
+
   return (
     // 一番外側．relativeを付与してボタンの起点とし、スクロールを受け持つ
     <div className="relative h-full w-full overflow-auto p-4">
       {/* ズームボタン（左上に絶対配置＆クリック透過制御） */}
-      {/* <div className="absolute top-4 left-4 z-20 flex gap-1 pointer-events-none"> */}
       <div className="sticky top-2 left-2 z-20 w-fit pointer-events-none">
         <div className="flex gap-1 rounded-md bg-white/90 p-1 shadow backdrop-blur-sm pointer-events-auto">
           <button
@@ -108,41 +134,69 @@ export function MapView({ map, pins = [], onPinClick, onMapClick }) {
       </div>
 
       {/* 
-        ピンと画像を包む箱．
-        widthを直接パーセント制御することで、ピンのズレを防ぎつつ
-        スクロールコンテナが領域拡大を正常検知できるようにする
+        中央寄せ・スクロール見切れ防止用コンテナ
+        isScaled === true のときは flex 中央寄せを解除し、m-auto にすることで左上欠けを防止
       */}
       <div
-        className="relative mx-auto h-fit w-fit leading-none transition-all duration-150"
-        style={{ width: `${scale * 100}%` }}
+        className={`flex min-h-full min-w-full ${isScaled ? "" : "items-center justify-center"
+          }`}
       >
-        <img
-          src={map.image_url}
-          alt={map.title || "マップ画像"}
-          onClick={handleImageClick}
-          onLoad={handleImageLoad}
-          className={`block w-full h-auto object-contain ${onMapClick ? "cursor-crosshair" : ""
-            }`}
-        />
+        {/* 
+          ピンと画像を包む箱．
+          widthを直接パーセント制御することで、ピンのズレを防ぎつつ
+          スクロールコンテナが領域拡大を正常検知できるようにする
+        */}
+        {/* 
+          【修正箇所】
+          - origin-top-left を削除（デフォルトの中心拡大にする）
+          - outer-wrapper に scale に応じた min-width / min-height を持たせることで、
+            中央寄せ（mx-auto）のまま拡大しても上が切れず、ピンもピッタリ追従させます。
+          - px単位でアスペクト比を動的に維持適用し、画像のズレと縦潰れを完璧に防止します。
+        */}
+        <div
+          className="relative m-auto leading-none transition-all duration-150"
+          style={
+            isScaled
+              ? {
+                width: `${baseSize.width * scale}px`,
+                height: `${(baseSize.width * scale) / baseSize.aspectRatio}px`,
+                minWidth: `${baseSize.width * scale}px`,
+                minHeight: `${(baseSize.width * scale) / baseSize.aspectRatio}px`,
+              }
+              : { width: "fit-content", height: "fit-content" }
+          }
+        >
+          <img
+            ref={imgRef}
+            src={map.image_url}
+            alt={map.title || "マップ画像"}
+            onClick={handleImageClick}
+            onLoad={handleImageLoad}
+            className={`block object-fill ${isScaled
+              ? "w-full h-full max-h-none max-w-none"
+              : "max-h-[70vh] w-auto h-auto"
+              } ${onMapClick ? "cursor-crosshair" : ""}`}
+          />
 
-        {/* ピン群 */}
-        {pins.map((pin) => (
-          <button
-            key={pin.id}
-            type="button"
-            onClick={() => onPinClick?.(pin)}
-            style={{
-              left: `${pin.x * 100}%`,
-              top: `${pin.y * 100}%`,
-            }}
-            className="absolute -translate-x-1/2 -translate-y-full transition-transform hover:scale-125 focus:outline-none"
-            title={pin.title}
-          >
-            <span className="text-2xl drop-shadow">
-              {getPinEmoji(pin.pin_type)}
-            </span>
-          </button>
-        ))}
+          {/* ピンを重ねて表示 */}
+          {pins.map((pin) => (
+            <button
+              key={pin.id}
+              type="button"
+              onClick={() => onPinClick?.(pin)}
+              style={{
+                left: `${pin.x * 100}%`,
+                top: `${pin.y * 100}%`,
+              }}
+              className="absolute -translate-x-1/2 -translate-y-full transition-transform hover:scale-125 focus:outline-none"
+              title={pin.title}
+            >
+              <span className="text-2xl drop-shadow">
+                {getPinEmoji(pin.pin_type)}
+              </span>
+            </button>
+          ))}
+        </div>
       </div>
     </div>
   );
