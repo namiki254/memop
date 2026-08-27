@@ -4,6 +4,16 @@ import { supabase } from "../lib/supabase";
 import Loading from "../components/Loading";
 import ErrorMessage from "../components/ErrorMessage";
 
+//表記揺れを整える関数
+function normalizeSearchText(value) {
+  return String(value ?? "")
+    .normalize("NFKC")
+    .toLowerCase()
+    .replace(/[\u30A1-\u30F6]/g, (character) =>
+      String.fromCharCode(character.charCodeAt(0) - 0x60),
+    );
+}
+
 /**
  * マップ一覧ページ．
  *
@@ -34,14 +44,16 @@ export default function MapList() {
   // 通信は増やさず，すでに取得済みの maps / childFolders を絞り込むだけ．
   const [searchQuery, setSearchQuery] = useState("");
   const trimmedQuery = searchQuery.trim();
+  const normalizedQuery = normalizeSearchText(trimmedQuery);
+
   const visibleMaps = trimmedQuery
     ? maps.filter((map) =>
-        map.title.toLowerCase().includes(trimmedQuery.toLowerCase()),
+        normalizeSearchText(map.title).includes(normalizedQuery),
       )
     : maps;
   const visibleFolders = trimmedQuery
     ? childFolders.filter((f) =>
-        f.name.toLowerCase().includes(trimmedQuery.toLowerCase()),
+        normalizeSearchText(f.name).includes(normalizedQuery),
       )
     : childFolders;
   const isEmpty = visibleFolders.length === 0 && visibleMaps.length === 0;
