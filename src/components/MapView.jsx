@@ -17,7 +17,8 @@ import { getPinEmoji } from "../lib/pinTypes";
  *   x = 0.35, y = 0.62 なら「画像の左から35%，上から62%の位置」という意味．
  *   こうしておくと，画面や画像の大きさが変わってもピンがずれない．
  */
-export function MapView({ map, pins = [], onPinClick, onMapClick, movablePinId, onPinMove, }) {
+
+export function MapView({ map, pins = [], pendingPin = null, onPinClick, onMapClick, movablePinId, onPinMove, }) {
   // 拡大率（scale）、最大拡大率（maxScale）のStateを管理
   const [scale, setScale] = useState(1);
   const [maxScale, setMaxScale] = useState(2); // フォールバック用初期値
@@ -275,12 +276,47 @@ export function MapView({ map, pins = [], onPinClick, onMapClick, movablePinId, 
               }`}
               title={pin.title}
             >
-              <span className="text-2xl drop-shadow">
-                {getPinEmoji(pin.pin_type)}
-              </span>
-              
+              {pin.kind === "button" ? (
+                // ボタンは，押すと別のマップへ移動することが一目で分かるよう，
+                // 普通のピン（絵文字がそのまま浮くだけ）とは見た目を変える．
+                // 実際の建物の案内サインに寄せて，扉の絵文字＋行き先の名前を出す．
+                <span className="flex flex-col items-center">
+                  <span className="flex h-9 w-9 items-center justify-center rounded-full bg-blue-600 text-lg text-white shadow-lg ring-2 ring-white">
+                    🚪
+                  </span>
+                  <span className="mt-0.5 max-w-24 truncate rounded bg-blue-600 px-1.5 py-0.5 text-[10px] font-bold text-white shadow">
+                    {pin.title}
+                  </span>
+                </span>
+              ) : (
+                <span className="text-2xl drop-shadow">
+                  {getPinEmoji(pin.pin_type)}
+                </span>
+              )}
             </button>
           ))}
+
+          {/* 新しいピンの追加予定位置 */}
+          {pendingPin && (
+            <div
+              aria-hidden="true"
+              style={{
+                left: `${pendingPin.x * 100}%`,
+                top: `${pendingPin.y * 100}%`,
+              }}
+              className="pointer-events-none absolute z-10 -translate-x-1/2 -translate-y-full animate-pulse"
+            >
+              {pendingPin.kind === "button" ? (
+                <span className="flex h-9 w-9 items-center justify-center rounded-full bg-blue-600 text-lg text-white shadow-lg ring-2 ring-white">
+                  🚪
+                </span>
+              ) : (
+                <span className="block text-3xl drop-shadow">
+                  {getPinEmoji(pendingPin.pin_type)}
+                </span>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </div>
