@@ -30,6 +30,8 @@ export function MapView({ map, pins = [], onPinClick, onMapClick, movablePinId, 
   });
   const imgRef = useRef(null);
   const mapAreaRef = useRef(null);
+  const moveFrameRef = useRef(null);
+  const pendingMoveRef = useRef(null);
 
   const MIN_SCALE = 1; // 最小表示を1倍に設定
   const SCALE_STEP = 0.25; // 0.25刻みのスケール
@@ -80,6 +82,14 @@ export function MapView({ map, pins = [], onPinClick, onMapClick, movablePinId, 
     );
   }
 
+  useEffect(() => {
+    return () => {
+      if (moveFrameRef.current !== null) {
+        cancelAnimationFrame(moveFrameRef.current);
+      }
+    };
+  }, []);
+
   /**
    * クリックされた場所を「画像に対する割合」に直して親へ渡す．
    *
@@ -107,6 +117,7 @@ export function MapView({ map, pins = [], onPinClick, onMapClick, movablePinId, 
 
   function handlePinPointerMove(event, pin) {
     if (movablePinId !== pin.id) return;
+    if (event.buttons !== 1) return;
     if (!event.currentTarget.hasPointerCapture(event.pointerId)) return;
     if (!mapAreaRef.current) return;
 
@@ -117,7 +128,40 @@ export function MapView({ map, pins = [], onPinClick, onMapClick, movablePinId, 
     const x = clamp((event.clientX - rect.left) / rect.width);
     const y = clamp((event.clientY - rect.top) / rect.height);
 
-    onPinMove?.(x, y);
+    pendingMoveRef.current = { x, y };
+
+    // すでに次の描画を予約している場合、座標だけ更新して待つ
+    if (moveFrameRef.current !== null) return;
+
+    moveFrameRef.current = requestAnimationFrame(() => {
+      moveFrameRef.current = null;
+
+      const position = pendingMoveRef.current;
+      pendingMoveRef.current = null;
+
+      if (position) {
+        onPinMove?.(position.x, position.y);
+      }
+    });
+  }
+
+  function finishPinDrag(event) {
+    if (moveFrameRef.current !== null) {
+      cancelAnimationFrame(moveFrameRef.current);
+      moveFrameRef.current = null;
+    }
+
+    const position = pendingMoveRef.current;
+    pendingMoveRef.current = null;
+
+    // 最後の位置を確実に反映するためもう一度反映
+    if (position) {
+      onPinMove?.(position.x, position.y);
+    }
+
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
   }
 
   const isScaled = scale > 1 && baseSize.width > 0;
@@ -216,16 +260,8 @@ export function MapView({ map, pins = [], onPinClick, onMapClick, movablePinId, 
                 event.currentTarget.setPointerCapture(event.pointerId);
               }}
               onPointerMove={(event) => handlePinPointerMove(event, pin)}
-              onPointerUp={(event) => {
-                if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-                  event.currentTarget.releasePointerCapture(event.pointerId);
-                }
-              }}
-              onPointerCancel={(event) => {
-                if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-                  event.currentTarget.releasePointerCapture(event.pointerId);
-                }
-              }}
+              onPointerUp={finishPinDrag}
+              onPointerCancel={finishPinDrag}
               style={{
                 left: `${pin.x * 100}%`,
                 top: `${pin.y * 100}%`,
