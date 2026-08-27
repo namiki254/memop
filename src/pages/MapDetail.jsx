@@ -21,6 +21,8 @@ export default function MapDetail() {
   // Supabaseから取得したデータを保存する
   const [map, setMap] = useState(null);
   const [pins, setPins] = useState([]);
+  // 現在ログインしているユーザーを保存する
+  const [currentUser, setCurrentUser] = useState(null);
   // 画面の状態
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -90,6 +92,19 @@ export default function MapDetail() {
   useEffect(() => {
     loadMapDetail();
   }, [loadMapDetail]);
+
+  // 現在ログインしているユーザーを取得する
+  useEffect(() => {
+    async function loadCurrentUser() {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      setCurrentUser(user);
+    }
+
+    loadCurrentUser();
+  }, []);
 
   /** 画像の何もない場所がクリックされた．そこに新しいピンを作る準備をする */
   async function handleMapClick(x, y) {
@@ -185,6 +200,17 @@ export default function MapDetail() {
     setPinError("");
 
     try {
+      // 現在ログインしているユーザーを取得する
+      const {
+        data: { user },
+        error: userError,
+        } = await supabase.auth.getUser();
+
+      if (userError || !user || user.id !== selectedPin.user_id) {
+        setPinError("このピンは編集できません．");
+        return;
+      }
+
       const { data: updated, error: updateError } = await supabase
         .from("pins")
         .update({
@@ -219,15 +245,25 @@ export default function MapDetail() {
   async function handleDeletePin() {
     if (savingPin || !selectedPin) return;
 
-    // 通信の前に確認ダイアログを出す
-    if (!window.confirm("このピンを削除しますか？")) {
-      return;
-    }
-
     setSavingPin(true);
     setPinError("");
 
     try {
+      // 現在ログインしているユーザーを取得する
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser();
+
+      if (userError || !user || user.id !== selectedPin.user_id) {
+        setPinError("このピンは削除できません．");
+        return;
+      }
+
+      // 本人であることを確認してから削除確認を出す
+      if (!window.confirm("このピンを削除しますか？")) {
+        return;
+      }
       const { error: deleteError } = await supabase
         .from("pins")
         .delete()
@@ -305,6 +341,7 @@ export default function MapDetail() {
       {selectedPin && (
         <PinPanel
           pin={selectedPin}
+          currentUser={currentUser}
           saving={savingPin}
           error={pinError}
           onSave={handleSavePin}
