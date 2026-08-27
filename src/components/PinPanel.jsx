@@ -32,6 +32,7 @@ export function PinPanel({
   mapOptions = [],
   onSave,
   onClose,
+  onPreviewChange,
   //  Update, Deleteを追加
   onUpdate,
   onDelete,
@@ -85,6 +86,20 @@ export function PinPanel({
       setLinkMapId(firstMapOptionId);
     }
   }, [linkMapId, firstMapOptionId]);
+
+  useEffect(() => {
+    if (!isNew) return;
+
+    const previewPinType =
+      pinType === "custom"
+        ? customPinType.trim() || PIN_TYPES[0].value
+        : pinType;
+
+    onPreviewChange?.({
+      kind,
+      pin_type: previewPinType,
+    });
+  }, [isNew, kind, pinType, customPinType, onPreviewChange]);
 
   // 新規作成（onSave）と更新（onUpdate）を切り替える
   function handleSubmit(event) {

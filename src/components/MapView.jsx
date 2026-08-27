@@ -17,7 +17,7 @@ import { getPinEmoji } from "../lib/pinTypes";
  *   x = 0.35, y = 0.62 なら「画像の左から35%，上から62%の位置」という意味．
  *   こうしておくと，画面や画像の大きさが変わってもピンがずれない．
  */
-export function MapView({ map, pins = [], onPinClick, onMapClick }) {
+export function MapView({ map, pins = [], pendingPin = null, onPinClick, onMapClick }) {
   // 拡大率（scale）、最大拡大率（maxScale）のStateを管理
   const [scale, setScale] = useState(1);
   const [maxScale, setMaxScale] = useState(2); // フォールバック用初期値
@@ -210,6 +210,28 @@ export function MapView({ map, pins = [], onPinClick, onMapClick }) {
               )}
             </button>
           ))}
+
+          {/* 新しいピンの追加予定位置 */}
+          {pendingPin && (
+            <div
+              aria-hidden="true"
+              style={{
+                left: `${pendingPin.x * 100}%`,
+                top: `${pendingPin.y * 100}%`,
+              }}
+              className="pointer-events-none absolute z-10 -translate-x-1/2 -translate-y-full animate-pulse"
+            >
+              {pendingPin.kind === "button" ? (
+                <span className="flex h-9 w-9 items-center justify-center rounded-full bg-blue-600 text-lg text-white shadow-lg ring-2 ring-white">
+                  🚪
+                </span>
+              ) : (
+                <span className="block text-3xl drop-shadow">
+                  {getPinEmoji(pendingPin.pin_type)}
+                </span>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </div>

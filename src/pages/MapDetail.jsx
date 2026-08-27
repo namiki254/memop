@@ -33,6 +33,12 @@ export default function MapDetail() {
   // 既存のピンを見ているときは pins の1件，新しく作るときは { x, y } だけの仮の値．
   // null のときはパネルを出さない．
   const [selectedPin, setSelectedPin] = useState(null);
+
+  const [pendingPinAppearance, setPendingPinAppearance] = useState({
+    kind: "pin",
+    pin_type: PIN_TYPES[0].value,
+  });
+
   const [savingPin, setSavingPin] = useState(false);
   const [pinError, setPinError] = useState("");
 
@@ -756,6 +762,11 @@ export default function MapDetail() {
           <MapView
             map={map}
             pins={visiblePins}
+            pendingPin={
+              selectedPin && !selectedPin.id
+                ? { ...selectedPin, ...pendingPinAppearance }
+                : null
+            }
             onPinClick={handlePinClick}
             onMapClick={handleMapClick}
           />
@@ -773,6 +784,7 @@ export default function MapDetail() {
             // Update, Deleteを追加
             onUpdate={handleUpdatePin}
             onDelete={handleDeletePin}
+            onPreviewChange={setPendingPinAppearance}
           />
         )}
       </div>
