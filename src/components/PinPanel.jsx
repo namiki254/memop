@@ -47,6 +47,7 @@ export function PinPanel({
   // ピンの種類（メモ／ボタン）と，ボタンのときの移動先（#67）
   const [kind, setKind] = useState("pin");
   const [linkMapId, setLinkMapId] = useState("");
+  const firstMapOptionId = mapOptions[0]?.id ?? "";
   // 編集中のモードを追加
   const [customPinType, setCustomPinType] = useState("");
   const [isEditing, setIsEditing] = useState(false);
@@ -78,6 +79,12 @@ export function PinPanel({
     );
     setCustomPinType(isCustomPinType ? pin.pin_type : "");
   }, [key, pin])
+
+  useEffect(() => {
+    if (!linkMapId && firstMapOptionId) {
+      setLinkMapId(firstMapOptionId);
+    }
+  }, [linkMapId, firstMapOptionId]);
 
   // 新規作成（onSave）と更新（onUpdate）を切り替える
   function handleSubmit(event) {
