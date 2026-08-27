@@ -33,6 +33,12 @@ export default function MapDetail() {
   // 既存のピンを見ているときは pins の1件，新しく作るときは { x, y } だけの仮の値．
   // null のときはパネルを出さない．
   const [selectedPin, setSelectedPin] = useState(null);
+
+  const [pendingPinAppearance, setPendingPinAppearance] = useState({
+    kind: "pin",
+    pin_type: PIN_TYPES[0].value,
+  });
+
   const [savingPin, setSavingPin] = useState(false);
   const [pinError, setPinError] = useState("");
 
@@ -42,9 +48,12 @@ export default function MapDetail() {
   // 同じフォルダに入っている他のマップ（#65のフォルダ機能が前提）．
   // フォルダに入っていないマップ（folder_id が null）では空のまま．
   const [siblingMaps, setSiblingMaps] = useState([]);
+
+  // ボタン種類のピン（#67）の移動先として選べる，全マップの一覧．
+  const [allMaps, setAllMaps] = useState([]);
   // 今ログインしている人が，このマップの作成者かどうか（削除の許可判定に使う）
   const isMapOwner = currentUser?.id === map?.user_id;
-
+  
   // マップ自体（タイトル・説明）の編集
   const [isEditingMap, setIsEditingMap] = useState(false);
   const [mapTitle, setMapTitle] = useState("");
@@ -215,6 +224,22 @@ export default function MapDetail() {
     };
   }, [map?.folder_id]);
 
+  // ボタンの移動先ピッカーに使う，全マップの一覧．最初に1回だけ取る．
+  useEffect(() => {
+    async function loadAllMaps() {
+      const { data, error: allMapsError } = await supabase
+        .from("maps")
+        .select("id, title")
+        .order("title");
+
+      if (!allMapsError) {
+        setAllMaps(data ?? []);
+      }
+    }
+
+    loadAllMaps();
+  }, []);
+
   // 現在ログインしているユーザーを取得する
   useEffect(() => {
     async function loadCurrentUser() {
@@ -304,6 +329,15 @@ export default function MapDetail() {
 
   /** 既にあるピンがクリックされた．中身を表示する */
   function handlePinClick(pin) {
+    // ボタンのピンは，押した瞬間に移動先のマップへ移る（パネルは開かない）．
+    // 移動先が消えている（link_map_id が無い）ときだけ，直せるようパネルを開く．
+    if (pin.kind === "button") {
+      if (pin.link_map_id) {
+        navigate(`/maps/${pin.link_map_id}`);
+        return;
+      }
+    }
+
     setPinError("");
     setSelectedPin(pin);
   }
@@ -412,7 +446,7 @@ export default function MapDetail() {
   }
 
   /** パネルの入力を pins テーブルに保存する */
-  async function handleSavePin({ title, content, pinType }) {
+  async function handleSavePin({ title, content, pinType, kind, linkMapId }) {
     if (savingPin || !selectedPin) return;
 
     setSavingPin(true);
@@ -438,6 +472,8 @@ export default function MapDetail() {
           title,
           content,
           pin_type: pinType,
+          kind,
+          link_map_id: kind === "button" ? linkMapId : null,
           user_id: user.id,
         })
         .select()
@@ -467,7 +503,7 @@ export default function MapDetail() {
   }
 
   /** パネルで編集した内容を更新する */
-  async function handleUpdatePin({ title, content, pinType }) {
+  async function handleUpdatePin({ title, content, pinType, kind, linkMapId }) {
     if (savingPin || !selectedPin) return;
 
     setSavingPin(true);
@@ -491,6 +527,8 @@ export default function MapDetail() {
           title,
           content,
           pin_type: pinType,
+          kind,
+          link_map_id: kind === "button" ? linkMapId : null,
         })
         .eq("id", selectedPin.id)
         .select()
@@ -724,6 +762,11 @@ export default function MapDetail() {
           <MapView
             map={map}
             pins={visiblePins}
+            pendingPin={
+              selectedPin && !selectedPin.id
+                ? { ...selectedPin, ...pendingPinAppearance }
+                : null
+            }
             onPinClick={handlePinClick}
             onMapClick={handleMapClick}
           />
@@ -735,11 +778,13 @@ export default function MapDetail() {
             currentUser={currentUser}
             saving={savingPin}
             error={pinError}
+            mapOptions={allMaps.filter((m) => m.id !== id)}
             onSave={handleSavePin}
             onClose={closePanel}
             // Update, Deleteを追加
             onUpdate={handleUpdatePin}
             onDelete={handleDeletePin}
+            onPreviewChange={setPendingPinAppearance}
           />
         )}
       </div>
