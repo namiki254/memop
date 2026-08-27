@@ -64,9 +64,6 @@ export default function MapDetail() {
   const [savingMap, setSavingMap] = useState(false);
   const [mapError, setMapError] = useState("");
 
-  // 検索キーワードを管理するstate
-  const [searchQuery, setSearchQuery] = useState("");
-
   //PIN_TIPESからvalueだけを取り出す
   const fixedTypeValues = new Set(
     PIN_TYPES.map((type) => type.value)
