@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import ErrorMessage from "../components/ErrorMessage";
 
 /**
  * マップ新規作成ページ．
  *
- * URL: /maps/new
+ * URL: /maps/new （フォルダの中で作るときは /maps/new?folder=フォルダのid）
  *
  * 流れは3段階．
  *   1. 画像を Supabase Storage（map-images バケット）へアップロードする
@@ -82,6 +82,8 @@ function makeFileName(file) {
 export default function MapUpload() {
   const navigate = useNavigate();
   const fileInputRef = useRef(null);
+  const [searchParams] = useSearchParams();
+  const folderId = searchParams.get("folder");
 
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
@@ -184,6 +186,17 @@ export default function MapUpload() {
     // 途中で想定外の例外が起きたときに setSubmitting(false) に辿り着けないと，
     // ボタンが「アップロード中...」のまま二度と押せなくなり，リロードするしかなくなる．
     try {
+      // 現在ログインしているユーザーを取得する
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser();
+
+      if (userError || !user) {
+        setError("マップを作成するにはログインしてください．");
+        return;
+      }
+
       // ファイル名は毎回変える．同じ名前で上げると，上書きではなく
       // 「すでに存在します」というエラーになって失敗するため．
       const path = makeFileName(file);
@@ -213,6 +226,8 @@ export default function MapUpload() {
           title: trimmedTitle,
           description: description.trim(),
           image_url: urlData.publicUrl,
+          user_id: user.id,
+          folder_id: folderId || null,
         })
         .select()
         .single();

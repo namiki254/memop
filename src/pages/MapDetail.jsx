@@ -5,6 +5,7 @@ import Loading from "../components/Loading";
 import ErrorMessage from "../components/ErrorMessage";
 import { MapView } from "../components/MapView";
 import { PinPanel } from "../components/PinPanel";
+import { PIN_TYPES } from "../lib/pinTypes";
 
 /**
  * マップ詳細ページ．
@@ -22,6 +23,8 @@ export default function MapDetail() {
   // Supabaseから取得したデータを保存する
   const [map, setMap] = useState(null);
   const [pins, setPins] = useState([]);
+  // 現在ログインしているユーザーを保存する
+  const [currentUser, setCurrentUser] = useState(null);
   // 画面の状態
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -36,12 +39,87 @@ export default function MapDetail() {
   // コピー状態を覚える
   const [copied, setCopied] = useState(false);
 
+  // 今ログインしている人が，このマップの作成者かどうか（削除の許可判定に使う）
+  const isMapOwner = currentUser?.id === map?.user_id;
+
   // マップ自体（タイトル・説明）の編集
   const [isEditingMap, setIsEditingMap] = useState(false);
   const [mapTitle, setMapTitle] = useState("");
   const [mapDescription, setMapDescription] = useState("");
   const [savingMap, setSavingMap] = useState(false);
   const [mapError, setMapError] = useState("");
+
+  //PIN_TIPESからvalueだけを取り出す
+  const fixedTypeValues = new Set(
+    PIN_TYPES.map((type) => type.value)
+  );
+
+  //自由入力されたピンのみ取り出す
+  const customTypeValues = [
+    ...new Set(
+      pins
+        .map((pin) => pin.pin_type)
+        .filter(
+          (pinType) =>
+            pinType && !fixedTypeValues.has(pinType)
+        )
+    ),
+  ];
+
+  //ピンの列挙
+  const availablePinTypes = [
+    ...PIN_TYPES,
+    ...customTypeValues.map((value) => ({
+      value,
+      label: value,
+      isCustom: true,
+    })),
+  ];
+
+  // 表示するピンの種類を管理する
+  const [defaultTypeVisible, setDefaultTypeVisible] =
+    useState(true);
+
+  const [typeVisibility, setTypeVisibility] =
+    useState({});
+  //その種類が表示対象か調べる
+  function isTypeEnabled(typeId) {
+    return (
+      typeVisibility[typeId] ??
+      defaultTypeVisible
+    );
+  }
+
+  // ピンの表示・非表示を切り替えるhandle
+  function handleTypeToggle(typeId) {
+    setTypeVisibility((prev) => {
+      const currentlyEnabled =
+        prev[typeId] ?? defaultTypeVisible;
+
+      return {
+        ...prev,
+        [typeId]: !currentlyEnabled,
+      };
+    });
+  }
+  // 全選択
+  function handleSelectAll() {
+    setDefaultTypeVisible(true);
+    setTypeVisibility({});
+  }
+  // 全解除
+  function handleDeselectAll() {
+    setDefaultTypeVisible(false);
+    setTypeVisibility({});
+  }
+
+  // 表示対象のピンに絞り込む
+  const visiblePins = pins.filter((pin) => {
+    const pinType =
+      pin?.pin_type || PIN_TYPES[0].value;
+
+    return isTypeEnabled(pinType);
+  });
 
   // マップとピンを取得する
   const loadMapDetail = useCallback(async () => {
@@ -101,9 +179,90 @@ export default function MapDetail() {
     loadMapDetail();
   }, [loadMapDetail]);
 
+  // 現在ログインしているユーザーを取得する
+  useEffect(() => {
+    async function loadCurrentUser() {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      setCurrentUser(user);
+    }
+
+       
+  loadCurrentUser();
+
+  //ログイン状態の監視
+  const {
+    data: { subscription },
+  } = supabase.auth.onAuthStateChange((_event, newSession) => {
+    setCurrentUser(newSession?.user ?? null);
+
+    // 操作中にログアウトした場合はパネルを閉じる
+    if (!newSession) {
+      setSelectedPin(null);
+    }
+  });
+
+  //ページを離れたら監視を中止
+  return () => {
+    subscription.unsubscribe();
+  };
+
+  },[]);
+  
+
+
+  // 他の人が置いた・書き直した・消したピンを，リロードなしで反映する．
+  //
+  // Supabase側で pins テーブルの変更配信（Replication）を有効にしておかないと，
+  // ここは何も受け取れない（#39のヒント参照）．
+  useEffect(() => {
+    const channel = supabase
+      .channel(`pins-of-map-${id}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "pins", filter: `map_id=eq.${id}` },
+        (payload) => {
+          if (payload.eventType === "INSERT") {
+            // 自分が置いたピンは，保存時にすでに手元へ足してある．
+            // 同じ id が来たら足さないことで，二重表示を防ぐ．
+            setPins((current) =>
+              current.some((p) => p.id === payload.new.id)
+                ? current
+                : [...current, payload.new],
+            );
+          } else if (payload.eventType === "UPDATE") {
+            setPins((current) =>
+              current.map((p) => (p.id === payload.new.id ? payload.new : p)),
+            );
+          } else if (payload.eventType === "DELETE") {
+            setPins((current) => current.filter((p) => p.id !== payload.old.id));
+          }
+        },
+      )
+      .subscribe();
+
+    // ページを離れる・別のマップに移るときは，必ず接続を切る．
+    // 切らないと，開くたびに接続が増え続ける．
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [id]);
+
   /** 画像の何もない場所がクリックされた．そこに新しいピンを作る準備をする */
-  function handleMapClick(x, y) {
+  async function handleMapClick(x, y) {
     setPinError("");
+    
+    // 現在ログインしているユーザーを確認する
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      alert("ピンを作成するにはログインしてください");
+      return;
+    }
     setSelectedPin({ x, y });
   }
 
@@ -175,9 +334,14 @@ export default function MapDetail() {
     }
   }
 
-  /** マップを削除する（pinsはon delete cascadeで一緒に消える） */
+  /** マップを削除する（pinsはon delete cascadeで一緒に消える）．作成者だけが実行できる． */
   async function handleDeleteMap() {
     if (savingMap) return;
+
+    if (!isMapOwner) {
+      setMapError("マップを削除できるのは作成者だけです．");
+      return;
+    }
 
     if (
       !window.confirm(
@@ -219,6 +383,16 @@ export default function MapDetail() {
     setPinError("");
 
     try {
+      // 現在ログインしているユーザーを取得する
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser();
+
+      if (userError || !user) {
+        setPinError("ピンを作成するにはログインしてください．");
+        return;
+      }
       const { data: created, error: insertError } = await supabase
         .from("pins")
         .insert({
@@ -228,6 +402,7 @@ export default function MapDetail() {
           title,
           content,
           pin_type: pinType,
+          user_id: user.id,
         })
         .select()
         .single();
@@ -241,7 +416,11 @@ export default function MapDetail() {
       // 作られたピンを手元の一覧に足す．
       // ここで loadMapDetail() を呼び直すと，画面が一度「読み込み中...」に戻って
       // 地図が消えるので，ピンを1件足すだけのときは呼ばない．
-      setPins((current) => [...current, created]);
+      setPins((current) =>
+        current.some((p) => p.id === created.id)
+          ? current
+          : [...current, created],
+      );
       setSelectedPin(null);
     } catch (e) {
       console.error("ピンの保存中に予期しないエラー", e);
@@ -259,6 +438,17 @@ export default function MapDetail() {
     setPinError("");
 
     try {
+      // 現在ログインしているユーザーを取得する
+      const {
+        data: { user },
+        error: userError,
+        } = await supabase.auth.getUser();
+
+      if (userError || !user || user.id !== selectedPin.user_id) {
+        setPinError("このピンは編集できません．");
+        return;
+      }
+
       const { data: updated, error: updateError } = await supabase
         .from("pins")
         .update({
@@ -293,15 +483,25 @@ export default function MapDetail() {
   async function handleDeletePin() {
     if (savingPin || !selectedPin) return;
 
-    // 通信の前に確認ダイアログを出す
-    if (!window.confirm("このピンを削除しますか？")) {
-      return;
-    }
-
     setSavingPin(true);
     setPinError("");
 
     try {
+      // 現在ログインしているユーザーを取得する
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser();
+
+      if (userError || !user || user.id !== selectedPin.user_id) {
+        setPinError("このピンは削除できません．");
+        return;
+      }
+
+      // 本人であることを確認してから削除確認を出す
+      if (!window.confirm("このピンを削除しますか？")) {
+        return;
+      }
       const { error: deleteError } = await supabase
         .from("pins")
         .delete()
@@ -408,13 +608,16 @@ export default function MapDetail() {
                 >
                   編集
                 </button>
-                <button
-                  onClick={handleDeleteMap}
-                  disabled={savingMap}
-                  className="rounded-md border border-red-200 px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 disabled:opacity-50"
-                >
-                  削除
-                </button>
+                {/* マップの削除は作成者だけができる */}
+                {isMapOwner && (
+                  <button
+                    onClick={handleDeleteMap}
+                    disabled={savingMap}
+                    className="rounded-md border border-red-200 px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 disabled:opacity-50"
+                  >
+                    削除
+                  </button>
+                )}
               </div>
             </div>
 
@@ -426,17 +629,65 @@ export default function MapDetail() {
                 {mapError}
               </p>
             )}
-            <p className="mt-1 text-xs text-slate-400">
-              画像をクリックするとピンを立てられます．
-            </p>
           </>
         )}
+
+        {/* ピンの種類ごとの表示・非表示の切替 */}
+        <div className="mt-3 flex flex-wrap items-center gap-3 border-t border-slate-100 pt-3">
+          <span className="text-xs font-semibold text-slate-600">
+            表示フィルタ:
+          </span>
+
+          {/* 一括選択、解除 */}
+          <div className="flex items-center gap-1.5 mr-2">
+            <button
+              type="button"
+              onClick={handleSelectAll}
+              className="text-xs text-blue-600 hover:underline"
+            >
+              すべてオン
+            </button>
+            <span className="text-xs text-slate-300">|</span>
+            <button
+              type="button"
+              onClick={handleDeselectAll}
+              className="text-xs text-blue-600 hover:underline"
+            >
+              すべてオフ
+            </button>
+          </div>
+
+          {availablePinTypes.map((type) => (
+            <label
+              key={type.value}
+              className="flex items-center gap-1.5 text-xs text-slate-700 cursor-pointer select-none"
+            >
+              <input
+                type="checkbox"
+                checked={isTypeEnabled(type.value)}
+                onChange={() => handleTypeToggle(type.value)}
+                className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+              />
+              <span>
+                {type.isCustom
+                  ? type.label
+                  : `${type.emoji}: ${type.label}`}
+              </span>
+            </label>
+          ))}
+        </div>
+
+        <p className="mt-1 text-xs text-slate-400">
+          画像をクリックするとピンを立てられます．
+        </p>
       </div>
 
       <div className="min-h-0 flex-1">
         <MapView
           map={map}
-          pins={pins}
+          // pins={pins}
+          // visiblepinに変更
+          pins={visiblePins}
           onPinClick={handlePinClick}
           onMapClick={handleMapClick}
         />
@@ -445,6 +696,7 @@ export default function MapDetail() {
       {selectedPin && (
         <PinPanel
           pin={selectedPin}
+          currentUser={currentUser}
           saving={savingPin}
           error={pinError}
           onSave={handleSavePin}
