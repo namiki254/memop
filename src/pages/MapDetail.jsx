@@ -120,6 +120,9 @@ export default function MapDetail() {
     setError(null);
     setMap(null);
     setPins([]);
+    setSelectedPin(null);
+    setIsEditingPin(false);
+    setPinError("");
 
     try {
       // 1. mapsテーブルから、URLのIDに一致するマップを取得
