@@ -29,6 +29,7 @@ export function MapView({ map, pins = [], onPinClick, onMapClick, movablePinId, 
     aspectRatio: 1,
   });
   const imgRef = useRef(null);
+  const mapAreaRef = useRef(null);
 
   const MIN_SCALE = 1; // 最小表示を1倍に設定
   const SCALE_STEP = 0.25; // 0.25刻みのスケール
@@ -50,18 +51,6 @@ export function MapView({ map, pins = [], onPinClick, onMapClick, movablePinId, 
       setMaxScale(calculatedMax);
     }
   };
-
-  const rect = mapAreaRef.current.getBoundingClientRect();
-
-  const x = Math.min(1, Math.max(0,
-    (event.clientX - rect.left) / rect.width
-  ));
-
-  const y = Math.min(1, Math.max(0,
-    (event.clientY - rect.top) / rect.height
-  ));
-
-  onPinMove?.(x, y);
 
   // ウィンドウサイズ変更時に1倍時の基準サイズを再計算
   useEffect(() => {
@@ -116,6 +105,21 @@ export function MapView({ map, pins = [], onPinClick, onMapClick, movablePinId, 
     onMapClick(clamp(x), clamp(y));
   }
 
+  function handlePinPointerMove(event, pin) {
+    if (movablePinId !== pin.id) return;
+    if (!event.currentTarget.hasPointerCapture(event.pointerId)) return;
+    if (!mapAreaRef.current) return;
+
+    const rect = mapAreaRef.current.getBoundingClientRect();
+    if (rect.width === 0 || rect.height === 0) return;
+
+    const clamp = (value) => Math.min(1, Math.max(0, value));
+    const x = clamp((event.clientX - rect.left) / rect.width);
+    const y = clamp((event.clientY - rect.top) / rect.height);
+
+    onPinMove?.(x, y);
+  }
+
   const isScaled = scale > 1 && baseSize.width > 0;
 
   return (
@@ -166,6 +170,7 @@ export function MapView({ map, pins = [], onPinClick, onMapClick, movablePinId, 
           - px単位でアスペクト比を動的に維持適用し、画像のズレと縦潰れを完璧に防止します。
         */}
         <div
+          ref = {mapAreaRef}
           className="relative m-auto leading-none transition-all duration-150"
           style={
             isScaled
@@ -195,7 +200,32 @@ export function MapView({ map, pins = [], onPinClick, onMapClick, movablePinId, 
             <button
               key={pin.id}
               type="button"
-              onClick={() => onPinClick?.(pin)}
+              onClick={(event) => {
+                event.stopPropagation();
+
+                // 編集中のピンはドラッグ後のクリックを無視する
+                if (movablePinId === pin.id) return;
+
+                onPinClick?.(pin);
+              }}
+              onPointerDown={(event) => {
+                if (movablePinId !== pin.id) return;
+
+                event.preventDefault();
+                event.stopPropagation();
+                event.currentTarget.setPointerCapture(event.pointerId);
+              }}
+              onPointerMove={(event) => handlePinPointerMove(event, pin)}
+              onPointerUp={(event) => {
+                if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+                  event.currentTarget.releasePointerCapture(event.pointerId);
+                }
+              }}
+              onPointerCancel={(event) => {
+                if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+                  event.currentTarget.releasePointerCapture(event.pointerId);
+                }
+              }}
               style={{
                 left: `${pin.x * 100}%`,
                 top: `${pin.y * 100}%`,
@@ -210,6 +240,7 @@ export function MapView({ map, pins = [], onPinClick, onMapClick, movablePinId, 
               <span className="text-2xl drop-shadow">
                 {getPinEmoji(pin.pin_type)}
               </span>
+              
             </button>
           ))}
         </div>
