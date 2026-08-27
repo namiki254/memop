@@ -1,4 +1,6 @@
 import { getPinEmoji } from "../lib/pinTypes";
+// reactからuseStateをインポート
+import { useState } from "react";
 
 /**
  * 地図表示コンポーネント．
@@ -17,6 +19,28 @@ import { getPinEmoji } from "../lib/pinTypes";
  *   こうしておくと，画面や画像の大きさが変わってもピンがずれない．
  */
 export function MapView({ map, pins = [], onPinClick, onMapClick }) {
+  // 拡大率（scale）、最大拡大率（maxScale）のStateを管理
+  const [scale, setScale] = useState(1);
+  const [maxScale, setMaxScale] = useState(2); // フォールバック用初期値
+
+  const MIN_SCALE = 1; // 最小表示を1倍に設定
+  const SCALE_STEP = 0.25; // 0.25刻みのスケール
+
+  const handleZoomIn = () =>
+    setScale((prev) => Math.min(prev + SCALE_STEP, maxScale));
+  const handleZoomOut = () =>
+    setScale((prev) => Math.max(prev - SCALE_STEP, MIN_SCALE));
+
+  // 画像読み込みのタイミングで、表示サイズ（clientWidth）と元画像サイズ（naturalWidth）からmaxScaleを計算
+  const handleImageLoad = (e) => {
+    const { naturalWidth, clientWidth } = e.target;
+    if (clientWidth > 0) {
+      // 表示サイズに対する元画像のサイズ比率を計算（最低でも1.5倍は確保）
+      const calculatedMax = Math.max(naturalWidth / clientWidth, 1.5);
+      setMaxScale(calculatedMax);
+    }
+  };
+
   if (!map?.image_url) {
     return (
       <div className="grid h-full w-full place-items-center bg-slate-200 text-slate-500">
@@ -56,49 +80,69 @@ export function MapView({ map, pins = [], onPinClick, onMapClick }) {
   }
 
   return (
-    // 一番外側．ここでスクロールを受け持つ
-    <div className="h-full w-full overflow-auto p-4">
-      {/* 画像が領域より小さいときは中央に寄せる */}
-      <div className="flex min-h-full min-w-full items-center justify-center">
-        {/*
-          ピンを載せる箱．
-          w-fit h-fit と leading-none で，箱の大きさを画像とぴったり同じにする．
-          ここがずれると，パーセント指定の基準がずれてピンが全部ずれる．
-        */}
-        <div className="relative h-fit w-fit leading-none">
-          <img
-            src={map.image_url}
-            alt={map.title || "マップ画像"}
-            onClick={handleImageClick}
-            className={`block max-h-[80vh] max-w-full object-contain ${
-              onMapClick ? "cursor-crosshair" : ""
-            }`}
-          />
-
-          {/*
-            ピン．
-            -translate-x-1/2 -translate-y-full で，ピンの先端が座標を指すようにずらす．
-            これが無いとピンの左上が座標になり，見た目が右下にずれる．
-            画像とは兄弟の要素なので，ピンを押しても画像のクリックには繋がらない．
-          */}
-          {pins.map((pin) => (
-            <button
-              key={pin.id}
-              type="button"
-              onClick={() => onPinClick?.(pin)}
-              style={{
-                left: `${pin.x * 100}%`,
-                top: `${pin.y * 100}%`,
-              }}
-              className="absolute -translate-x-1/2 -translate-y-full transition-transform hover:scale-125 focus:outline-none"
-              title={pin.title}
-            >
-              <span className="text-2xl drop-shadow">
-                {getPinEmoji(pin.pin_type)}
-              </span>
-            </button>
-          ))}
+    // 一番外側．relativeを付与してボタンの起点とし、スクロールを受け持つ
+    <div className="relative h-full w-full overflow-auto p-4">
+      {/* ズームボタン（左上に絶対配置＆クリック透過制御） */}
+      {/* <div className="absolute top-4 left-4 z-20 flex gap-1 pointer-events-none"> */}
+      <div className="sticky top-2 left-2 z-20 w-fit pointer-events-none">
+        <div className="flex gap-1 rounded-md bg-white/90 p-1 shadow backdrop-blur-sm pointer-events-auto">
+          <button
+            type="button"
+            onClick={handleZoomOut}
+            disabled={scale <= MIN_SCALE}
+            className="h-8 w-8 rounded font-bold hover:bg-slate-100 disabled:opacity-30"
+            title="縮小"
+          >
+            －
+          </button>
+          <button
+            type="button"
+            onClick={handleZoomIn}
+            disabled={scale >= maxScale}
+            className="h-8 w-8 rounded font-bold hover:bg-slate-100 disabled:opacity-30"
+            title="拡大"
+          >
+            ＋
+          </button>
         </div>
+      </div>
+
+      {/* 
+        ピンと画像を包む箱．
+        widthを直接パーセント制御することで、ピンのズレを防ぎつつ
+        スクロールコンテナが領域拡大を正常検知できるようにする
+      */}
+      <div
+        className="relative mx-auto h-fit w-fit leading-none transition-all duration-150"
+        style={{ width: `${scale * 100}%` }}
+      >
+        <img
+          src={map.image_url}
+          alt={map.title || "マップ画像"}
+          onClick={handleImageClick}
+          onLoad={handleImageLoad}
+          className={`block w-full h-auto object-contain ${onMapClick ? "cursor-crosshair" : ""
+            }`}
+        />
+
+        {/* ピン群 */}
+        {pins.map((pin) => (
+          <button
+            key={pin.id}
+            type="button"
+            onClick={() => onPinClick?.(pin)}
+            style={{
+              left: `${pin.x * 100}%`,
+              top: `${pin.y * 100}%`,
+            }}
+            className="absolute -translate-x-1/2 -translate-y-full transition-transform hover:scale-125 focus:outline-none"
+            title={pin.title}
+          >
+            <span className="text-2xl drop-shadow">
+              {getPinEmoji(pin.pin_type)}
+            </span>
+          </button>
+        ))}
       </div>
     </div>
   );
