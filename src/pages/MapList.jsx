@@ -30,6 +30,17 @@ export default function MapList() {
   const [creatingFolder, setCreatingFolder] = useState(false);
   const [folderError, setFolderError] = useState("");
 
+  // マップをタイトルで検索する．
+  // 通信は増やさず，すでに取得済みの maps を絞り込むだけ．
+  const [searchQuery, setSearchQuery] = useState("");
+  const trimmedQuery = searchQuery.trim();
+  const visibleMaps = trimmedQuery
+    ? maps.filter((map) =>
+        map.title.toLowerCase().includes(trimmedQuery.toLowerCase()),
+      )
+    : maps;
+  const isEmpty = childFolders.length === 0 && visibleMaps.length === 0;
+
   useEffect(() => {
     let cancelled = false;
 
@@ -237,46 +248,68 @@ export default function MapList() {
         </p>
       )}
 
-      {childFolders.length === 0 && maps.length === 0 ? (
-        <p className="mt-6 text-slate-500">ここには何もありません．</p>
+      <input
+        type="text"
+        value={searchQuery}
+        onChange={(e) => setSearchQuery(e.target.value)}
+        placeholder="マップをタイトルで検索"
+        className="mt-3 w-full max-w-sm rounded border border-slate-300 px-3 py-1.5 text-sm"
+      />
+
+      {isEmpty ? (
+        <p className="mt-6 text-slate-500">
+          {trimmedQuery
+            ? `「${trimmedQuery}」に一致するマップが見つかりません．`
+            : "ここには何もありません．"}
+        </p>
       ) : (
-        <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-3">
-          {childFolders.map((f) => (
-            <Link
-              key={f.id}
-              to={`/folders/${f.id}`}
-              className="flex items-center gap-3 rounded-lg border border-slate-200 bg-white p-4 shadow-sm hover:bg-slate-50"
-            >
-              <span className="text-2xl">📁</span>
-              <span className="font-bold text-slate-800">{f.name}</span>
-            </Link>
-          ))}
+        <>
+          {/* フォルダは検索対象外．マップだけ0件になったときは，フォルダは
+              そのまま出しつつ，検索に一致しなかったことも分かるようにする． */}
+          {trimmedQuery && visibleMaps.length === 0 && (
+            <p className="mt-6 text-slate-500">
+              「{trimmedQuery}」に一致するマップは見つかりません．
+            </p>
+          )}
 
-          {maps.map((map) => (
-            <Link
-              key={map.id}
-              to={`/maps/${map.id}`}
-              className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm"
-            >
-              {map.image_url ? (
-                <img
-                  src={map.image_url}
-                  alt={map.title}
-                  className="h-40 w-full object-cover"
-                />
-              ) : (
-                <div className="h-40 w-full bg-slate-200" />
-              )}
+          <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-3">
+            {childFolders.map((f) => (
+              <Link
+                key={f.id}
+                to={`/folders/${f.id}`}
+                className="flex items-center gap-3 rounded-lg border border-slate-200 bg-white p-4 shadow-sm hover:bg-slate-50"
+              >
+                <span className="text-2xl">📁</span>
+                <span className="font-bold text-slate-800">{f.name}</span>
+              </Link>
+            ))}
 
-              <div className="p-4">
-                <h3 className="font-bold text-slate-800">{map.title}</h3>
-                <p className="mt-1 text-sm text-slate-500">
-                  {map.description}
-                </p>
-              </div>
-            </Link>
-          ))}
-        </div>
+            {visibleMaps.map((map) => (
+              <Link
+                key={map.id}
+                to={`/maps/${map.id}`}
+                className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm"
+              >
+                {map.image_url ? (
+                  <img
+                    src={map.image_url}
+                    alt={map.title}
+                    className="h-40 w-full object-cover"
+                  />
+                ) : (
+                  <div className="h-40 w-full bg-slate-200" />
+                )}
+
+                <div className="p-4">
+                  <h3 className="font-bold text-slate-800">{map.title}</h3>
+                  <p className="mt-1 text-sm text-slate-500">
+                    {map.description}
+                  </p>
+                </div>
+              </Link>
+            ))}
+          </div>
+        </>
       )}
     </div>
   );
