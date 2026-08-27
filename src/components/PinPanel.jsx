@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import { PIN_TYPES, getPinEmoji } from "../lib/pinTypes";
+// 追加
+import { renderTextWithLinks } from "../lib/linkify";
 
 /**
  * ピンの入力・表示パネル．
@@ -158,20 +160,19 @@ export function PinPanel({
                 {type.emoji} {type.label}
               </button>
             ))}
-             {/* 自由入力を選択するボタン */}
-              <button
-                type="button"
-                onClick={() => setPinType("custom")}
-                disabled={saving}
-                aria-pressed={pinType === "custom"}
-                className={`rounded-full border px-2.5 py-1 text-xs disabled:opacity-50 ${
-                  pinType === "custom"
-                  ? "border-slate-800 bg-slate-800 text-white"
-                  : "border-slate-300 text-slate-600"
-                  }`}
-              >
-                ✏️ 自由入力
-             </button>
+            {/* 自由入力を選択するボタン */}
+            <button
+              type="button"
+              onClick={() => setPinType("custom")}
+              disabled={saving}
+              aria-pressed={pinType === "custom"}
+              className={`rounded-full border px-2.5 py-1 text-xs disabled:opacity-50 ${pinType === "custom"
+                ? "border-slate-800 bg-slate-800 text-white"
+                : "border-slate-300 text-slate-600"
+                }`}
+            >
+              ✏️ 自由入力
+            </button>
           </div>
           {/* 自由入力を選んだときだけ入力欄を表示する */}
           {pinType === "custom" && (
@@ -183,7 +184,7 @@ export function PinPanel({
               maxLength={4}
               placeholder="例：🐱 / 猫"
               className="mt-2 w-full rounded border border-slate-300 px-3 py-2 text-sm disabled:bg-slate-100"
-              />
+            />
           )}
           {error && (
             <p className="mt-2 rounded bg-red-50 p-2 text-sm text-red-700">
@@ -194,8 +195,8 @@ export function PinPanel({
           <button
             type="submit"
             disabled={
-              saving || 
-              title.trim() === ""||
+              saving ||
+              title.trim() === "" ||
               (pinType === "custom" && customPinType.trim() === "")
             }
             className="mt-3 w-full rounded bg-slate-800 px-4 py-2 text-sm text-white disabled:cursor-not-allowed disabled:bg-slate-300"
@@ -228,7 +229,9 @@ export function PinPanel({
 
           {pin.content ? (
             <p className="mt-2 text-sm break-words whitespace-pre-wrap text-slate-600">
-              {pin.content}
+              {/* {pin.content} */}
+              {/* urlを識別、リンクを付与する関数で返す */}
+              {renderTextWithLinks(pin.content)}
             </p>
           ) : (
             <p className="mt-2 text-sm text-slate-400">メモはありません．</p>
