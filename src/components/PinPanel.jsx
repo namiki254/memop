@@ -24,6 +24,7 @@ import { PIN_TYPES, getPinEmoji } from "../lib/pinTypes";
  */
 export function PinPanel({
   pin,
+  currentUser,
   saving = false,
   error = "",
   mapOptions = [],
@@ -35,6 +36,9 @@ export function PinPanel({
 }) {
   const isNew = !pin?.id;
 
+  // 今ログインしている人が、このピンの作成者かどうか
+  const isOwner = currentUser?.id === pin?.user_id;
+
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
   const [pinType, setPinType] = useState(PIN_TYPES[0].value);
@@ -42,17 +46,13 @@ export function PinPanel({
   const [kind, setKind] = useState("pin");
   const [linkMapId, setLinkMapId] = useState("");
   // 編集中のモードを追加
+  const [customPinType, setCustomPinType] = useState("");
   const [isEditing, setIsEditing] = useState(false);
 
   // 別のピンを選び直したときに入力欄を作り直す．
   // pin.id が無い（新規作成）ときは座標を鍵にして，
   // 別の場所をクリックしたら空の状態に戻るようにする．
   const key = pin?.id ?? `${pin?.x}-${pin?.y}`;
-  // useEffect(() => {
-  //   setTitle("");
-  //   setContent("");
-  //   setPinType(PIN_TYPES[0].value);
-  // }, [key]);
 
   // ピンを選び直したときに入力欄に既存タイトルやメモが入るように変更
   //
@@ -63,17 +63,19 @@ export function PinPanel({
     setIsEditing(false);
     setTitle(pin?.title ?? "");
     setContent(pin?.content ?? "");
-    setPinType(pin?.pin_type ?? PIN_TYPES[0].value);
     setKind(pin?.kind ?? "pin");
     setLinkMapId(pin?.link_map_id ?? mapOptions[0]?.id ?? "");
-  }, [key, pin])
 
-  // function handleSubmit(event) {
-  //   event.preventDefault();
-  //   if (saving) return;
-  //   if (!title.trim()) return;
-  //   onSave?.({ title: title.trim(), content: content.trim(), pinType });
-  // }
+    // 既存4種類に含まれない場合は自由入力として扱う
+    const isCustomPinType =
+      pin?.pin_type &&
+      !PIN_TYPES.some((type) => type.value === pin.pin_type);
+
+    setPinType(
+      isCustomPinType ? "custom" : pin?.pin_type ?? PIN_TYPES[0].value
+    );
+    setCustomPinType(isCustomPinType ? pin.pin_type : "");
+  }, [key, pin])
 
   // 新規作成（onSave）と更新（onUpdate）を切り替える
   function handleSubmit(event) {
@@ -81,11 +83,19 @@ export function PinPanel({
     if (saving) return;
     if (!title.trim()) return;
     if (kind === "button" && !linkMapId) return;
+    // 自由入力が空欄の場合は保存しない（kind が button のときは pinType 自体を使わない）
+    if (kind !== "button" && pinType === "custom" && !customPinType.trim()) {
+      return;
+    }
+
+    // 自由入力の場合は，入力された文字をピンの種類として保存する
+    const savedPinType =
+      pinType === "custom" ? customPinType.trim() : pinType;
 
     const payload = {
       title: title.trim(),
       content: kind === "button" ? "" : content.trim(),
-      pinType,
+      pinType: savedPinType,
       kind,
       linkMapId: kind === "button" ? linkMapId : null,
     };
@@ -101,23 +111,22 @@ export function PinPanel({
   function cancelEditing() {
     setTitle(pin?.title ?? "");
     setContent(pin?.content ?? "");
-    setPinType(pin?.pin_type ?? PIN_TYPES[0].value);
     setKind(pin?.kind ?? "pin");
     setLinkMapId(pin?.link_map_id ?? mapOptions[0]?.id ?? "");
+
+    // 既存4種類に含まれない場合は自由入力として元に戻す
+    const isCustomPinType =
+      pin?.pin_type &&
+      !PIN_TYPES.some((type) => type.value === pin.pin_type);
+    setPinType(
+      isCustomPinType ? "custom" : pin?.pin_type ?? PIN_TYPES[0].value
+    );
+    setCustomPinType(isCustomPinType ? pin.pin_type : "");
     setIsEditing(false);
   }
 
   return (
     <div className="fixed inset-x-0 bottom-0 z-10 border-t border-slate-200 bg-white p-4 shadow-lg sm:inset-x-auto sm:right-4 sm:bottom-4 sm:w-80 sm:rounded sm:border">
-      {/* 
-      {isNew ? (
-        <form onSubmit={handleSubmit}>
-          <div className="flex items-center justify-between">
-            <p className="font-bold text-slate-800">ここにピンを立てる</p>
-            <button
-              type="button"
-              onClick={onClose}
-               */}
       {/* フォームを表示する条件にisEditingも追加 */}
       {isNew || isEditing ? ( // ★ isEditing も追加
         <form onSubmit={handleSubmit}>
@@ -234,7 +243,33 @@ export function PinPanel({
                     {type.emoji} {type.label}
                   </button>
                 ))}
+                {/* 自由入力を選択するボタン */}
+                <button
+                  type="button"
+                  onClick={() => setPinType("custom")}
+                  disabled={saving}
+                  aria-pressed={pinType === "custom"}
+                  className={`rounded-full border px-2.5 py-1 text-xs disabled:opacity-50 ${
+                    pinType === "custom"
+                    ? "border-slate-800 bg-slate-800 text-white"
+                    : "border-slate-300 text-slate-600"
+                    }`}
+                >
+                  ✏️ 自由入力
+                </button>
               </div>
+              {/* 自由入力を選んだときだけ入力欄を表示する */}
+              {pinType === "custom" && (
+                <input
+                  type="text"
+                  value={customPinType}
+                  onChange={(e) => setCustomPinType(e.target.value)}
+                  disabled={saving}
+                  maxLength={4}
+                  placeholder="例：🐱 / 猫"
+                  className="mt-2 w-full rounded border border-slate-300 px-3 py-2 text-sm disabled:bg-slate-100"
+                />
+              )}
             </>
           )}
 
@@ -249,7 +284,10 @@ export function PinPanel({
             disabled={
               saving ||
               title.trim() === "" ||
-              (kind === "button" && !linkMapId)
+              (kind === "button" && !linkMapId) ||
+              (kind !== "button" &&
+                pinType === "custom" &&
+                customPinType.trim() === "")
             }
             className="mt-3 w-full rounded bg-slate-800 px-4 py-2 text-sm text-white disabled:cursor-not-allowed disabled:bg-slate-300"
           >
@@ -305,24 +343,26 @@ export function PinPanel({
             </p>
           )}
           {/* 編集、削除ボタン */}
-          <div className="mt-4 flex justify-between border-t border-slate-100 pt-3">
-            <button
-              type="button"
-              onClick={() => setIsEditing(true)}
-              disabled={saving}
-              className="rounded border border-slate-300 px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50 disabled:opacity-50"
-            >
-              編集
-            </button>
-            <button
-              type="button"
-              onClick={onDelete}
-              disabled={saving}
-              className="rounded border border-red-200 px-3 py-1.5 text-xs text-red-600 hover:bg-red-50 disabled:opacity-50"
-            >
-              削除
-            </button>
-          </div>
+          {isOwner && (
+            <div className="mt-4 flex justify-between border-t border-slate-100 pt-3">
+              <button
+                type="button"
+                onClick={() => setIsEditing(true)}
+                disabled={saving}
+                className="rounded border border-slate-300 px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+              >
+                編集
+              </button>
+              <button
+                type="button"
+                onClick={onDelete}
+                disabled={saving}
+                className="rounded border border-red-200 px-3 py-1.5 text-xs text-red-600 hover:bg-red-50 disabled:opacity-50"
+              >
+                削除
+              </button>
+            </div>
+          )}
         </div>
       )}
     </div>
