@@ -37,7 +37,10 @@ export default function MapDetail() {
 
   // コピー状態を覚える
   const [copied, setCopied] = useState(false);
-
+  
+  // 検索キーワードを管理するstate
+  const [searchQuery, setSearchQuery] = useState("");
+  
   //PIN_TIPESからvalueだけを取り出す
   const fixedTypeValues = new Set(
     PIN_TYPES.map((type) => type.value)
@@ -102,12 +105,20 @@ export default function MapDetail() {
     setTypeVisibility({});
   }
 
-  // 表示対象のピンに絞り込む
+  // 表示対象のピンに絞り込む（種類フィルタ × タイトル検索のAND条件）
   const visiblePins = pins.filter((pin) => {
-    const pinType =
-      pin?.pin_type || PIN_TYPES[0].value;
+    // 1. ピンの種類による絞り込み
+    const pinType = pin?.pin_type || PIN_TYPES[0].value;
+    const isTypeMatch = isTypeEnabled(pinType);
 
-    return isTypeEnabled(pinType);
+    // 2. タイトルによる絞り込み（小文字化してトリム後を判定）
+    const title = pin?.title || "";
+    const isTitleMatch = title
+      .toLowerCase()
+      .includes(searchQuery.trim().toLowerCase());
+
+    // 両方の条件を満たすものだけ表示
+    return isTypeMatch && isTitleMatch;
   });
 
   // マップとピンを取得する
@@ -462,6 +473,20 @@ export default function MapDetail() {
 
         {/* ピンの種類ごとの表示・非表示の切替 */}
         <div className="mt-3 flex flex-wrap items-center gap-3 border-t border-slate-100 pt-3">
+
+          <div className="flex items-center gap-2 mr-2">
+            <span className="text-xs font-semibold text-slate-600">
+              タイトル検索:
+            </span>
+            <input
+              type="text"
+              placeholder="ピンを検索..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="rounded-md border border-slate-300 px-2.5 py-1 text-xs focus:border-blue-500 focus:outline-none"
+            />
+          </div>
+
           <span className="text-xs font-semibold text-slate-600">
             表示フィルタ:
           </span>
