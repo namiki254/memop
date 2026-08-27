@@ -17,7 +17,8 @@ import { getPinEmoji } from "../lib/pinTypes";
  *   x = 0.35, y = 0.62 なら「画像の左から35%，上から62%の位置」という意味．
  *   こうしておくと，画面や画像の大きさが変わってもピンがずれない．
  */
-export function MapView({ map, pins = [], pendingPin = null, onPinClick, onMapClick }) {
+
+export function MapView({ map, pins = [], pendingPin = null, onPinClick, onMapClick, movablePinId, onPinMove, }) {
   // 拡大率（scale）、最大拡大率（maxScale）のStateを管理
   const [scale, setScale] = useState(1);
   const [maxScale, setMaxScale] = useState(2); // フォールバック用初期値
@@ -29,6 +30,9 @@ export function MapView({ map, pins = [], pendingPin = null, onPinClick, onMapCl
     aspectRatio: 1,
   });
   const imgRef = useRef(null);
+  const mapAreaRef = useRef(null);
+  const moveFrameRef = useRef(null);
+  const pendingMoveRef = useRef(null);
 
   const MIN_SCALE = 1; // 最小表示を1倍に設定
   const SCALE_STEP = 0.25; // 0.25刻みのスケール
@@ -66,6 +70,14 @@ export function MapView({ map, pins = [], pendingPin = null, onPinClick, onMapCl
     return () => window.removeEventListener("resize", handleResize);
   }, [scale]);
 
+  useEffect(() => {
+    return () => {
+      if (moveFrameRef.current !== null) {
+        cancelAnimationFrame(moveFrameRef.current);
+      }
+    };
+  }, []);
+
   if (!map?.image_url) {
     return (
       <div className="grid h-full w-full place-items-center bg-slate-200 text-slate-500">
@@ -78,6 +90,8 @@ export function MapView({ map, pins = [], pendingPin = null, onPinClick, onMapCl
       </div>
     );
   }
+
+
 
   /**
    * クリックされた場所を「画像に対する割合」に直して親へ渡す．
@@ -102,6 +116,55 @@ export function MapView({ map, pins = [], pendingPin = null, onPinClick, onMapCl
     // 端をクリックしたときに 0〜1 をわずかに外れることがあるので収める
     const clamp = (v) => Math.min(1, Math.max(0, v));
     onMapClick(clamp(x), clamp(y));
+  }
+
+  function handlePinPointerMove(event, pin) {
+    if (movablePinId !== pin.id) return;
+    if (event.buttons !== 1) return;
+    if (!event.currentTarget.hasPointerCapture(event.pointerId)) return;
+    if (!mapAreaRef.current) return;
+
+    const rect = mapAreaRef.current.getBoundingClientRect();
+    if (rect.width === 0 || rect.height === 0) return;
+
+    const clamp = (value) => Math.min(1, Math.max(0, value));
+    const x = clamp((event.clientX - rect.left) / rect.width);
+    const y = clamp((event.clientY - rect.top) / rect.height);
+
+    pendingMoveRef.current = { x, y };
+
+    // すでに次の描画を予約している場合、座標だけ更新して待つ
+    if (moveFrameRef.current !== null) return;
+
+    moveFrameRef.current = requestAnimationFrame(() => {
+      moveFrameRef.current = null;
+
+      const position = pendingMoveRef.current;
+      pendingMoveRef.current = null;
+
+      if (position) {
+        onPinMove?.(position.x, position.y);
+      }
+    });
+  }
+
+  function finishPinDrag(event) {
+    if (moveFrameRef.current !== null) {
+      cancelAnimationFrame(moveFrameRef.current);
+      moveFrameRef.current = null;
+    }
+
+    const position = pendingMoveRef.current;
+    pendingMoveRef.current = null;
+
+    // 最後の位置を確実に反映するためもう一度反映
+    if (position) {
+      onPinMove?.(position.x, position.y);
+    }
+
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
   }
 
   const isScaled = scale > 1 && baseSize.width > 0;
@@ -154,6 +217,7 @@ export function MapView({ map, pins = [], pendingPin = null, onPinClick, onMapCl
           - px単位でアスペクト比を動的に維持適用し、画像のズレと縦潰れを完璧に防止します。
         */}
         <div
+          ref = {mapAreaRef}
           className="relative m-auto leading-none transition-all duration-150"
           style={
             isScaled
@@ -183,12 +247,33 @@ export function MapView({ map, pins = [], pendingPin = null, onPinClick, onMapCl
             <button
               key={pin.id}
               type="button"
-              onClick={() => onPinClick?.(pin)}
+              onClick={(event) => {
+                event.stopPropagation();
+
+                // 編集中のピンはドラッグ後のクリックを無視する
+                if (movablePinId === pin.id) return;
+
+                onPinClick?.(pin);
+              }}
+              onPointerDown={(event) => {
+                if (movablePinId !== pin.id) return;
+
+                event.preventDefault();
+                event.stopPropagation();
+                event.currentTarget.setPointerCapture(event.pointerId);
+              }}
+              onPointerMove={(event) => handlePinPointerMove(event, pin)}
+              onPointerUp={finishPinDrag}
+              onPointerCancel={finishPinDrag}
               style={{
                 left: `${pin.x * 100}%`,
                 top: `${pin.y * 100}%`,
               }}
-              className="absolute -translate-x-1/2 -translate-y-full transition-transform hover:scale-125 focus:outline-none"
+              className={`absolute -translate-x-1/2 -translate-y-full transition-transform hover:scale-125 focus:outline-none ${
+                movablePinId === pin.id
+                  ? "touch-none cursor-grab active:cursor-grabbing"
+                  : ""
+              }`}
               title={pin.title}
             >
               {pin.kind === "button" ? (

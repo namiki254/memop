@@ -36,6 +36,9 @@ export function PinPanel({
   //  Update, Deleteを追加
   onUpdate,
   onDelete,
+  isEditing,
+  onEditStart,
+  onEditCancel,
 }) {
   const isNew = !pin?.id;
 
@@ -51,7 +54,6 @@ export function PinPanel({
   const firstMapOptionId = mapOptions[0]?.id ?? "";
   // 編集中のモードを追加
   const [customPinType, setCustomPinType] = useState("");
-  const [isEditing, setIsEditing] = useState(false);
 
   // 別のピンを選び直したときに入力欄を作り直す．
   // pin.id が無い（新規作成）ときは座標を鍵にして，
@@ -64,7 +66,6 @@ export function PinPanel({
   // allMaps.filter(...) を毎レンダー新しい配列として渡しているため，
   // 依存に入れると入力中も再実行されて選び直した内容が消えてしまう．
   useEffect(() => {
-    setIsEditing(false);
     setTitle(pin?.title ?? "");
     setContent(pin?.content ?? "");
     setKind(pin?.kind ?? "pin");
@@ -79,7 +80,14 @@ export function PinPanel({
       isCustomPinType ? "custom" : pin?.pin_type ?? PIN_TYPES[0].value
     );
     setCustomPinType(isCustomPinType ? pin.pin_type : "");
-  }, [key, pin])
+  }, [
+    key,
+    pin?.title,
+    pin?.content,
+    pin?.pin_type,
+    pin?.kind,
+    pin?.link_map_id,
+  ]);
 
   useEffect(() => {
     if (!linkMapId && firstMapOptionId) {
@@ -146,7 +154,7 @@ export function PinPanel({
       isCustomPinType ? "custom" : pin?.pin_type ?? PIN_TYPES[0].value
     );
     setCustomPinType(isCustomPinType ? pin.pin_type : "");
-    setIsEditing(false);
+    onEditCancel?.();
   }
 
   return (
@@ -373,7 +381,7 @@ export function PinPanel({
             <div className="mt-4 flex justify-between border-t border-slate-100 pt-3">
               <button
                 type="button"
-                onClick={() => setIsEditing(true)}
+                onClick={onEditStart}
                 disabled={saving}
                 className="rounded border border-slate-300 px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50 disabled:opacity-50"
               >

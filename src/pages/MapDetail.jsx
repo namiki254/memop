@@ -45,6 +45,9 @@ export default function MapDetail() {
   // コピー状態を覚える
   const [copied, setCopied] = useState(false);
 
+  // ピンのタイトル検索
+  const [searchQuery, setSearchQuery] = useState("");
+
   // 同じフォルダに入っている他のマップ（#65のフォルダ機能が前提）．
   // フォルダに入っていないマップ（folder_id が null）では空のまま．
   const [siblingMaps, setSiblingMaps] = useState([]);
@@ -60,9 +63,6 @@ export default function MapDetail() {
   const [mapDescription, setMapDescription] = useState("");
   const [savingMap, setSavingMap] = useState(false);
   const [mapError, setMapError] = useState("");
-
-  // 検索キーワードを管理するstate
-  const [searchQuery, setSearchQuery] = useState("");
 
   //PIN_TIPESからvalueだけを取り出す
   const fixedTypeValues = new Set(
@@ -105,6 +105,47 @@ export default function MapDetail() {
     );
   }
 
+  //ピンを動かせるように
+  const [isEditingPin, setIsEditingPin] = useState(false);
+  function handleMovePin(x, y) {
+    if (!isEditingPin) return;
+
+    setSelectedPin((pin) => {
+      if (!pin) return pin;
+
+      // 座標が変わっていなければ再レンダーしない
+      if (pin.x === x && pin.y === y) {
+        return pin;
+      }
+
+      return {
+        ...pin,
+        x,
+        y,
+      };
+    });
+  }
+
+  function startEditingPin() {
+    if (!selectedPin?.id) return;
+
+    setPinError("");
+    setIsEditingPin(true);
+  }
+
+  function cancelEditingPin() {
+    const originalPin = pins.find(
+      (pin) => pin.id === selectedPin?.id
+    );
+
+    if (originalPin) {
+      setSelectedPin(originalPin);
+    }
+
+    setPinError("");
+    setIsEditingPin(false);
+  }
+
   // ピンの表示・非表示を切り替えるhandle
   function handleTypeToggle(typeId) {
     setTypeVisibility((prev) => {
@@ -143,6 +184,9 @@ export default function MapDetail() {
     // 両方の条件を満たすものだけ表示
     return isTypeMatch && isTitleMatch;
   });
+  const displayPins = visiblePins.map((pin) =>
+    isEditingPin && pin.id === selectedPin?.id ? selectedPin : pin
+  );
 
   // マップとピンを取得する
   const loadMapDetail = useCallback(async () => {
@@ -152,6 +196,8 @@ export default function MapDetail() {
     setPins([]);
     setSelectedPin(null);
     setPinError("");
+    setIsEditingPin(false);
+    setSearchQuery("");
     setIsEditingMap(false);
     setMapError("");
 
@@ -273,6 +319,7 @@ export default function MapDetail() {
     // 操作中にログアウトした場合はパネルを閉じる
     if (!newSession) {
       setSelectedPin(null);
+      setIsEditingPin(false);
     }
   });
 
@@ -350,11 +397,13 @@ export default function MapDetail() {
     }
 
     setPinError("");
+    setIsEditingPin(false);
     setSelectedPin(pin);
   }
 
   function closePanel() {
     setSelectedPin(null);
+    setIsEditingPin(false);
     setPinError("");
   }
 
@@ -504,7 +553,7 @@ export default function MapDetail() {
           ? current
           : [...current, created],
       );
-      setSelectedPin(null);
+      closePanel();
     } catch (e) {
       console.error("ピンの保存中に予期しないエラー", e);
       setPinError(`予期しないエラーが発生しました．${e?.message ?? e}`);
@@ -535,6 +584,8 @@ export default function MapDetail() {
       const { data: updated, error: updateError } = await supabase
         .from("pins")
         .update({
+          x: selectedPin.x,
+          y: selectedPin.y,
           title,
           content,
           pin_type: pinType,
@@ -555,7 +606,7 @@ export default function MapDetail() {
       setPins((current) =>
         current.map((p) => (p.id === updated.id ? updated : p))
       );
-      setSelectedPin(null);
+      closePanel();
     } catch (e) {
       console.error("ピンの更新中に予期しないエラー", e);
       setPinError(`予期しないエラーが発生しました．${e?.message ?? e}`);
@@ -600,7 +651,7 @@ export default function MapDetail() {
 
       // 手元の配列から対象のピンを除外
       setPins((current) => current.filter((p) => p.id !== selectedPin.id));
-      setSelectedPin(null);
+      closePanel();
     } catch (e) {
       console.error("ピンの削除中に予期しないエラー", e);
       setPinError(`予期しないエラーが発生しました．${e?.message ?? e}`);
@@ -785,14 +836,16 @@ export default function MapDetail() {
         <div className="min-h-0 flex-1">
           <MapView
             map={map}
-            pins={visiblePins}
+            pins={displayPins}
             pendingPin={
               selectedPin && !selectedPin.id
                 ? { ...selectedPin, ...pendingPinAppearance }
                 : null
             }
             onPinClick={handlePinClick}
-            onMapClick={handleMapClick}
+            onMapClick={isEditingPin ? undefined : handleMapClick}
+            movablePinId={isEditingPin ? selectedPin?.id : null}
+            onPinMove={handleMovePin}
           />
         </div>
 
@@ -805,14 +858,15 @@ export default function MapDetail() {
             mapOptions={allMaps.filter((m) => m.id !== id)}
             onSave={handleSavePin}
             onClose={closePanel}
-            // Update, Deleteを追加
             onUpdate={handleUpdatePin}
             onDelete={handleDeletePin}
             onPreviewChange={setPendingPinAppearance}
+            isEditing={isEditingPin}
+            onEditStart={startEditingPin}
+            onEditCancel={cancelEditingPin}
           />
         )}
       </div>
-
       {/* 同じフォルダの他マップへの切り替え．フォルダに入っていないマップでは出さない． */}
       {siblingMaps.length > 0 && (
         <aside className="w-48 shrink-0 overflow-auto border-l border-slate-200 p-3">
