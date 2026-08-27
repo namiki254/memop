@@ -17,7 +17,7 @@ import { getPinEmoji } from "../lib/pinTypes";
  *   x = 0.35, y = 0.62 なら「画像の左から35%，上から62%の位置」という意味．
  *   こうしておくと，画面や画像の大きさが変わってもピンがずれない．
  */
-export function MapView({ map, pins = [], onPinClick, onMapClick }) {
+export function MapView({ map, pins = [], onPinClick, onMapClick, movablePinId, onPinMove, }) {
   // 拡大率（scale）、最大拡大率（maxScale）のStateを管理
   const [scale, setScale] = useState(1);
   const [maxScale, setMaxScale] = useState(2); // フォールバック用初期値
@@ -50,6 +50,18 @@ export function MapView({ map, pins = [], onPinClick, onMapClick }) {
       setMaxScale(calculatedMax);
     }
   };
+
+  const rect = mapAreaRef.current.getBoundingClientRect();
+
+  const x = Math.min(1, Math.max(0,
+    (event.clientX - rect.left) / rect.width
+  ));
+
+  const y = Math.min(1, Math.max(0,
+    (event.clientY - rect.top) / rect.height
+  ));
+
+  onPinMove?.(x, y);
 
   // ウィンドウサイズ変更時に1倍時の基準サイズを再計算
   useEffect(() => {
@@ -188,7 +200,11 @@ export function MapView({ map, pins = [], onPinClick, onMapClick }) {
                 left: `${pin.x * 100}%`,
                 top: `${pin.y * 100}%`,
               }}
-              className="absolute -translate-x-1/2 -translate-y-full transition-transform hover:scale-125 focus:outline-none"
+              className={`absolute -translate-x-1/2 -translate-y-full transition-transform hover:scale-125 focus:outline-none ${
+                movablePinId === pin.id
+                  ? "touch-none cursor-grab active:cursor-grabbing"
+                  : ""
+              }`}
               title={pin.title}
             >
               <span className="text-2xl drop-shadow">

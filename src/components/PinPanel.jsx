@@ -30,6 +30,9 @@ export function PinPanel({
   //  Update, Deleteを追加
   onUpdate,
   onDelete,
+  isEditing,
+  onEditStart,
+  onEditCancel,
 }) {
   const isNew = !pin?.id;
 
@@ -41,7 +44,6 @@ export function PinPanel({
   const [pinType, setPinType] = useState(PIN_TYPES[0].value);
   // 編集中のモードを追加
   const [customPinType, setCustomPinType] = useState("");
-  const [isEditing, setIsEditing] = useState(false);
 
   // 別のピンを選び直したときに入力欄を作り直す．
   // pin.id が無い（新規作成）ときは座標を鍵にして，
@@ -50,7 +52,6 @@ export function PinPanel({
 
   // ピンを選び直したときに入力欄に既存タイトルやメモが入るように変更
   useEffect(() => {
-    setIsEditing(false);
     setTitle(pin?.title ?? "");
     setContent(pin?.content ?? "");
 
@@ -247,7 +248,7 @@ export function PinPanel({
             <div className="mt-4 flex justify-between border-t border-slate-100 pt-3">
               <button
                 type="button"
-                onClick={() => setIsEditing(true)}
+                onClick={onEditStart}
                 disabled={saving}
                 className="rounded border border-slate-300 px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50 disabled:opacity-50"
               >

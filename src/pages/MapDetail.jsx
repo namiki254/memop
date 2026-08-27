@@ -79,6 +79,20 @@ export default function MapDetail() {
     );
   }
 
+  //ピンを動かせるように
+  const [isEditingPin, setIsEditingPin] = useState(false);
+  function handleMovePin(x, y) {
+    setSelectedPin((pin) => ({
+      ...pin,
+      x,
+      y,
+    }));
+  }
+
+  const displayPins = visiblePins.map((pin) =>
+    isEditingPin && pin.id === selectedPin?.id ? selectedPin : pin
+  );
+
   // ピンの表示・非表示を切り替えるhandle
   function handleTypeToggle(typeId) {
     setTypeVisibility((prev) => {
@@ -349,6 +363,8 @@ export default function MapDetail() {
       const { data: updated, error: updateError } = await supabase
         .from("pins")
         .update({
+          x: selectedPin.x,
+          y: selectedPin.y,
           title,
           content,
           pin_type: pinType,
@@ -517,7 +533,9 @@ export default function MapDetail() {
           // visiblepinに変更
           pins={visiblePins}
           onPinClick={handlePinClick}
-          onMapClick={handleMapClick}
+          onMapClick={isEditingPin ? undefined : handleMapClick}
+          movablePinId={isEditingPin ? selectedPin?.id : null}
+          onPinMove={handleMovePin}
         />
       </div>
 
