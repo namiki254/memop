@@ -36,38 +36,76 @@ export default function MapDetail() {
   // コピー状態を覚える
   const [copied, setCopied] = useState(false);
 
-  // 表示するピンの種類を管理する
-  const [enabledTypes, setEnabledTypes] = useState(
-    () => new Set(PIN_TYPES.map((type) => type.value))
+  //PIN_TIPESからvalueだけを取り出す
+  const fixedTypeValues = new Set(
+    PIN_TYPES.map((type) => type.value)
   );
+
+  //自由入力されたピンのみ取り出す
+  const customTypeValues = [
+    ...new Set(
+      pins
+        .map((pin) => pin.pin_type)
+        .filter(
+          (pinType) =>
+            pinType && !fixedTypeValues.has(pinType)
+        )
+    ),
+  ];
+
+  //ピンの列挙
+  const availablePinTypes = [
+    ...PIN_TYPES,
+    ...customTypeValues.map((value) => ({
+      value,
+      label: value,
+      isCustom: true,
+    })),
+  ];
+
+  // 表示するピンの種類を管理する
+  const [defaultTypeVisible, setDefaultTypeVisible] =
+    useState(true);
+
+  const [typeVisibility, setTypeVisibility] =
+    useState({});
+  //その種類が表示対象か調べる
+  function isTypeEnabled(typeId) {
+    return (
+      typeVisibility[typeId] ??
+      defaultTypeVisible
+    );
+  }
 
   // ピンの表示・非表示を切り替えるhandle
   function handleTypeToggle(typeId) {
-    setEnabledTypes((prev) => {
-      const next = new Set(prev);
-      if (next.has(typeId)) {
-        next.delete(typeId);
-      } else {
-        next.add(typeId);
-      }
-      return next;
+    setTypeVisibility((prev) => {
+      const currentlyEnabled =
+        prev[typeId] ?? defaultTypeVisible;
+
+      return {
+        ...prev,
+        [typeId]: !currentlyEnabled,
+      };
     });
   }
-
   // 全選択
   function handleSelectAll() {
-    setEnabledTypes(new Set(PIN_TYPES.map((type) => type.value)));
+    setDefaultTypeVisible(true);
+    setTypeVisibility({});
   }
   // 全解除
   function handleDeselectAll() {
-    setEnabledTypes(new Set());
+    setDefaultTypeVisible(false);
+    setTypeVisibility({});
   }
 
   // 表示対象のピンに絞り込む
   const visiblePins = pins.filter((pin) => {
-    // pin_type が未設定（null/undefined/空文字）の場合はフォールバックとして表示
-    if (!pin?.pin_type) return true;
-    return enabledTypes.has(pin.pin_type);
+    const pinType =
+      pin?.pin_type || PIN_TYPES[0].value;
+
+    return isTypeEnabled(pinType);
   });
 
   // マップとピンを取得する
@@ -328,18 +366,22 @@ export default function MapDetail() {
             </button>
           </div>
 
-          {PIN_TYPES.map((type) => (
+          {availablePinTypes.map((type) => (
             <label
               key={type.value}
               className="flex items-center gap-1.5 text-xs text-slate-700 cursor-pointer select-none"
             >
               <input
                 type="checkbox"
-                checked={enabledTypes.has(type.value)}
+                checked={isTypeEnabled(type.value)}
                 onChange={() => handleTypeToggle(type.value)}
                 className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
               />
-              <span>{type.emoji}: {type.label}</span>
+              <span>
+                {type.isCustom
+                  ? type.label
+                  : `${type.emoji}: ${type.label}`}
+              </span>
             </label>
           ))}
         </div>
