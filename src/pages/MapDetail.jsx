@@ -233,13 +233,13 @@ export default function MapDetail() {
     // 操作中にログアウトした場合はパネルを閉じる
     if (!newSession) {
       setSelectedPin(null);
+      setIsEditingPin(false);
     }
   });
 
   //ページを離れたら監視を中止
   return () => {
     subscription.unsubscribe();
-    setIsEditingPin(false);
   };
 
   },[]);

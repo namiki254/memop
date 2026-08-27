@@ -64,7 +64,7 @@ export function PinPanel({
       isCustomPinType ? "custom" : pin?.pin_type ?? PIN_TYPES[0].value
     );
     setCustomPinType(isCustomPinType ? pin.pin_type : "");
-  }, [key, pin])
+  }, [key])
 
   // 新規作成（onSave）と更新（onUpdate）を切り替える
   function handleSubmit(event) {
@@ -95,7 +95,7 @@ export function PinPanel({
       isCustomPinType ? "custom" : pin?.pin_type ?? PIN_TYPES[0].value
     );
     setCustomPinType(isCustomPinType ? pin.pin_type : "");
-    setIsEditing(false);
+    onEditCancel?.();
   }
 
   return (

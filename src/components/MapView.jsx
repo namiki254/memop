@@ -69,6 +69,14 @@ export function MapView({ map, pins = [], onPinClick, onMapClick, movablePinId, 
     return () => window.removeEventListener("resize", handleResize);
   }, [scale]);
 
+  useEffect(() => {
+    return () => {
+      if (moveFrameRef.current !== null) {
+        cancelAnimationFrame(moveFrameRef.current);
+      }
+    };
+  }, []);
+
   if (!map?.image_url) {
     return (
       <div className="grid h-full w-full place-items-center bg-slate-200 text-slate-500">
@@ -82,13 +90,7 @@ export function MapView({ map, pins = [], onPinClick, onMapClick, movablePinId, 
     );
   }
 
-  useEffect(() => {
-    return () => {
-      if (moveFrameRef.current !== null) {
-        cancelAnimationFrame(moveFrameRef.current);
-      }
-    };
-  }, []);
+
 
   /**
    * クリックされた場所を「画像に対する割合」に直して親へ渡す．
