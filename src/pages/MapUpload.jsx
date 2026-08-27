@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import ErrorMessage from "../components/ErrorMessage";
 
 /**
  * マップ新規作成ページ．
  *
- * URL: /maps/new
+ * URL: /maps/new （フォルダの中で作るときは /maps/new?folder=フォルダのid）
  *
  * 流れは3段階．
  *   1. 画像を Supabase Storage（map-images バケット）へアップロードする
@@ -82,6 +82,8 @@ function makeFileName(file) {
 export default function MapUpload() {
   const navigate = useNavigate();
   const fileInputRef = useRef(null);
+  const [searchParams] = useSearchParams();
+  const folderId = searchParams.get("folder");
 
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
@@ -225,6 +227,7 @@ export default function MapUpload() {
           description: description.trim(),
           image_url: urlData.publicUrl,
           user_id: user.id,
+          folder_id: folderId || null,
         })
         .select()
         .single();

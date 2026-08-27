@@ -1,5 +1,4 @@
-import { Routes, Route, Link } from "react-router-dom";
-import { useNavigate } from "react-router-dom";
+import { Routes, Route, Link, useLocation, useNavigate } from "react-router-dom";
 import { supabase } from "./lib/supabase.js";
 import MapList from "./pages/MapList.jsx";
 import MapUpload from "./pages/MapUpload.jsx";
@@ -21,6 +20,15 @@ import TestMapView from "./pages/TestMapView.jsx";
 
 export default function App() {
   const navigate = useNavigate();
+  const location = useLocation();
+
+  // 今フォルダの中にいる場合，「新しいマップ」もそのフォルダの中に作られるようにする．
+  // ヘッダーは <Routes> の外にあって :folderId を直接は受け取れないので，
+  // 今のURLから読み取る．
+  const folderMatch = location.pathname.match(/^\/folders\/([^/]+)/);
+  const newMapHref = folderMatch ? `/maps/new?folder=${folderMatch[1]}` : "/maps/new";
+
+
   async function handleNewMap() {
     const {
       data: { user },
@@ -31,8 +39,9 @@ export default function App() {
       return;
     }
 
-    navigate("/maps/new");
+    navigate(newMapHref);
   }
+
   return (
     <div className="flex h-screen flex-col">
       <header className="flex items-center justify-between border-b border-slate-200 px-6 py-3">
@@ -59,6 +68,7 @@ export default function App() {
       <main className="min-h-0 flex-1">
         <Routes>
           <Route path="/" element={<MapList />} />
+          <Route path="/folders/:folderId" element={<MapList />} />
           <Route path="/maps/new" element={<MapUpload />} />
           <Route path="/maps/:id" element={<MapDetail />} />
           {/* issue #28 用のテストページ追加 */}
