@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import { PIN_TYPES, getPinEmoji } from "../lib/pinTypes";
+// 追加
+import { renderTextWithLinks } from "../lib/linkify";
 
 /**
  * ピンの入力・表示パネル．
@@ -331,7 +333,9 @@ export function PinPanel({
             </p>
           ) : pin.content ? (
             <p className="mt-2 text-sm break-words whitespace-pre-wrap text-slate-600">
-              {pin.content}
+              {/* {pin.content} */}
+              {/* urlを識別、リンクを付与する関数で返す */}
+              {renderTextWithLinks(pin.content)}
             </p>
           ) : (
             <p className="mt-2 text-sm text-slate-400">メモはありません．</p>
