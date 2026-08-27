@@ -1,7 +1,9 @@
-import { Routes, Route, Link, useLocation } from "react-router-dom";
+import { Routes, Route, Link, useLocation, useNavigate } from "react-router-dom";
+import { supabase } from "./lib/supabase.js";
 import MapList from "./pages/MapList.jsx";
 import MapUpload from "./pages/MapUpload.jsx";
 import MapDetail from "./pages/MapDetail.jsx";
+import AuthButton from "./components/AuthButton.jsx";
 // issue #28 用のテストページ追加
 import TestMapView from "./pages/TestMapView.jsx";
 
@@ -17,6 +19,7 @@ import TestMapView from "./pages/TestMapView.jsx";
  */
 
 export default function App() {
+  const navigate = useNavigate();
   const location = useLocation();
 
   // 今フォルダの中にいる場合，「新しいマップ」もそのフォルダの中に作られるようにする．
@@ -24,6 +27,20 @@ export default function App() {
   // 今のURLから読み取る．
   const folderMatch = location.pathname.match(/^\/folders\/([^/]+)/);
   const newMapHref = folderMatch ? `/maps/new?folder=${folderMatch[1]}` : "/maps/new";
+
+
+  async function handleNewMap() {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      alert("新しいマップを作るにはログインしてください");
+      return;
+    }
+
+    navigate(newMapHref);
+  }
 
   return (
     <div className="flex h-screen flex-col">
@@ -37,12 +54,15 @@ export default function App() {
           [テスト] MapView確認
         </Link>
 
-        <Link
-          to={newMapHref}
+        <button
+          type="button"
+          onClick={handleNewMap}
           className="rounded bg-slate-800 px-3 py-1.5 text-sm text-white"
         >
           新しいマップ
-        </Link>
+        </button>
+
+        <AuthButton />
       </header>
 
       <main className="min-h-0 flex-1">
