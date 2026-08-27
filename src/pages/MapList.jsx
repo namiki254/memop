@@ -4,6 +4,16 @@ import { supabase } from "../lib/supabase";
 import Loading from "../components/Loading";
 import ErrorMessage from "../components/ErrorMessage";
 
+//表記揺れを整える関数
+function normalizeSearchText(value) {
+  return String(value ?? "")
+    .normalize("NFKC")
+    .toLowerCase()
+    .replace(/[\u30A1-\u30F6]/g, (character) =>
+      String.fromCharCode(character.charCodeAt(0) - 0x60),
+    );
+}
+
 /**
  * マップ一覧ページ．
  *
@@ -29,6 +39,24 @@ export default function MapList() {
   const [newFolderName, setNewFolderName] = useState("");
   const [creatingFolder, setCreatingFolder] = useState(false);
   const [folderError, setFolderError] = useState("");
+
+  // マップ・フォルダを名前で検索する．
+  // 通信は増やさず，すでに取得済みの maps / childFolders を絞り込むだけ．
+  const [searchQuery, setSearchQuery] = useState("");
+  const trimmedQuery = searchQuery.trim();
+  const normalizedQuery = normalizeSearchText(trimmedQuery);
+
+  const visibleMaps = trimmedQuery
+    ? maps.filter((map) =>
+        normalizeSearchText(map.title).includes(normalizedQuery),
+      )
+    : maps;
+  const visibleFolders = trimmedQuery
+    ? childFolders.filter((f) =>
+        normalizeSearchText(f.name).includes(normalizedQuery),
+      )
+    : childFolders;
+  const isEmpty = visibleFolders.length === 0 && visibleMaps.length === 0;
 
   useEffect(() => {
     let cancelled = false;
@@ -237,11 +265,23 @@ export default function MapList() {
         </p>
       )}
 
-      {childFolders.length === 0 && maps.length === 0 ? (
-        <p className="mt-6 text-slate-500">ここには何もありません．</p>
+      <input
+        type="text"
+        value={searchQuery}
+        onChange={(e) => setSearchQuery(e.target.value)}
+        placeholder="マップ・フォルダを名前で検索"
+        className="mt-3 w-full max-w-sm rounded border border-slate-300 px-3 py-1.5 text-sm"
+      />
+
+      {isEmpty ? (
+        <p className="mt-6 text-slate-500">
+          {trimmedQuery
+            ? `「${trimmedQuery}」に一致するものが見つかりません．`
+            : "ここには何もありません．"}
+        </p>
       ) : (
         <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-3">
-          {childFolders.map((f) => (
+          {visibleFolders.map((f) => (
             <Link
               key={f.id}
               to={`/folders/${f.id}`}
@@ -252,7 +292,7 @@ export default function MapList() {
             </Link>
           ))}
 
-          {maps.map((map) => (
+          {visibleMaps.map((map) => (
             <Link
               key={map.id}
               to={`/maps/${map.id}`}

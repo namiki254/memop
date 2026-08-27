@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import Loading from "../components/Loading";
 import ErrorMessage from "../components/ErrorMessage";
@@ -19,6 +19,7 @@ import { PIN_TYPES } from "../lib/pinTypes";
 export default function MapDetail() {
   // /maps/:id の :id を取得する
   const { id } = useParams();
+  const navigate = useNavigate();
   // Supabaseから取得したデータを保存する
   const [map, setMap] = useState(null);
   const [pins, setPins] = useState([]);
@@ -32,15 +33,37 @@ export default function MapDetail() {
   // 既存のピンを見ているときは pins の1件，新しく作るときは { x, y } だけの仮の値．
   // null のときはパネルを出さない．
   const [selectedPin, setSelectedPin] = useState(null);
+
+  const [pendingPinAppearance, setPendingPinAppearance] = useState({
+    kind: "pin",
+    pin_type: PIN_TYPES[0].value,
+  });
+
   const [savingPin, setSavingPin] = useState(false);
   const [pinError, setPinError] = useState("");
 
   // コピー状態を覚える
   const [copied, setCopied] = useState(false);
-  
+
+  // 同じフォルダに入っている他のマップ（#65のフォルダ機能が前提）．
+  // フォルダに入っていないマップ（folder_id が null）では空のまま．
+  const [siblingMaps, setSiblingMaps] = useState([]);
+
+  // ボタン種類のピン（#67）の移動先として選べる，全マップの一覧．
+  const [allMaps, setAllMaps] = useState([]);
+  // 今ログインしている人が，このマップの作成者かどうか（削除の許可判定に使う）
+  const isMapOwner = currentUser?.id === map?.user_id;
+
+  // マップ自体（タイトル・説明）の編集
+  const [isEditingMap, setIsEditingMap] = useState(false);
+  const [mapTitle, setMapTitle] = useState("");
+  const [mapDescription, setMapDescription] = useState("");
+  const [savingMap, setSavingMap] = useState(false);
+  const [mapError, setMapError] = useState("");
+
   // 検索キーワードを管理するstate
   const [searchQuery, setSearchQuery] = useState("");
-  
+
   //PIN_TIPESからvalueだけを取り出す
   const fixedTypeValues = new Set(
     PIN_TYPES.map((type) => type.value)
@@ -127,6 +150,10 @@ export default function MapDetail() {
     setError(null);
     setMap(null);
     setPins([]);
+    setSelectedPin(null);
+    setPinError("");
+    setIsEditingMap(false);
+    setMapError("");
 
     try {
       // 1. mapsテーブルから、URLのIDに一致するマップを取得
@@ -165,6 +192,8 @@ export default function MapDetail() {
 
       // 3. 取得したデータをstateへ保存
       setMap(mapData);
+      setMapTitle(mapData.title);
+      setMapDescription(mapData.description ?? "");
       setPins(pinData ?? []);
     } catch (fetchError) {
       setError(fetchError);
@@ -176,6 +205,51 @@ export default function MapDetail() {
   useEffect(() => {
     loadMapDetail();
   }, [loadMapDetail]);
+
+  // 同じフォルダの他マップを取る．
+  // 依存を map?.folder_id（値）にしているので，同じフォルダ内で
+  // マップを切り替えても（id は変わるが folder_id は変わらない）取り直さない．
+  useEffect(() => {
+    if (!map?.folder_id) {
+      setSiblingMaps([]);
+      return;
+    }
+
+    let ignore = false;
+
+    async function loadSiblings() {
+      const { data, error: siblingsError } = await supabase
+        .from("maps")
+        .select("id, title")
+        .eq("folder_id", map.folder_id)
+        .order("created_at", { ascending: true });
+
+      if (!ignore && !siblingsError) {
+        setSiblingMaps(data ?? []);
+      }
+    }
+
+    loadSiblings();
+    return () => {
+      ignore = true;
+    };
+  }, [map?.folder_id]);
+
+  // ボタンの移動先ピッカーに使う，全マップの一覧．最初に1回だけ取る．
+  useEffect(() => {
+    async function loadAllMaps() {
+      const { data, error: allMapsError } = await supabase
+        .from("maps")
+        .select("id, title")
+        .order("title");
+
+      if (!allMapsError) {
+        setAllMaps(data ?? []);
+      }
+    }
+
+    loadAllMaps();
+  }, []);
 
   // 現在ログインしているユーザーを取得する
   useEffect(() => {
@@ -266,6 +340,15 @@ export default function MapDetail() {
 
   /** 既にあるピンがクリックされた．中身を表示する */
   function handlePinClick(pin) {
+    // ボタンのピンは，押した瞬間に移動先のマップへ移る（パネルは開かない）．
+    // 移動先が消えている（link_map_id が無い）ときだけ，直せるようパネルを開く．
+    if (pin.kind === "button") {
+      if (pin.link_map_id) {
+        navigate(`/maps/${pin.link_map_id}`);
+        return;
+      }
+    }
+
     setPinError("");
     setSelectedPin(pin);
   }
@@ -283,8 +366,98 @@ export default function MapDetail() {
     setTimeout(() => setCopied(false), 2000);
   }
 
+  function startEditingMap() {
+    setMapError("");
+    setIsEditingMap(true);
+  }
+
+  function cancelEditingMap() {
+    setMapTitle(map.title);
+    setMapDescription(map.description ?? "");
+    setMapError("");
+    setIsEditingMap(false);
+  }
+
+  /** マップのタイトル・説明を書き直す */
+  async function handleUpdateMap(event) {
+    event.preventDefault();
+    if (savingMap) return;
+
+    const trimmedTitle = mapTitle.trim();
+    if (!trimmedTitle) return;
+
+    setSavingMap(true);
+    setMapError("");
+
+    try {
+      const { data: updated, error: updateError } = await supabase
+        .from("maps")
+        .update({ title: trimmedTitle, description: mapDescription.trim() })
+        .eq("id", id)
+        .select()
+        .single();
+
+      if (updateError) {
+        console.error("マップの更新に失敗", updateError);
+        setMapError(`更新に失敗しました．${updateError.message}`);
+        return;
+      }
+
+      setMap(updated);
+      setMapTitle(updated.title);
+      setMapDescription(updated.description ?? "");
+      setIsEditingMap(false);
+    } catch (e) {
+      console.error("マップの更新中に予期しないエラー", e);
+      setMapError(`予期しないエラーが発生しました．${e?.message ?? e}`);
+    } finally {
+      setSavingMap(false);
+    }
+  }
+
+  /** マップを削除する（pinsはon delete cascadeで一緒に消える）．作成者だけが実行できる． */
+  async function handleDeleteMap() {
+    if (savingMap) return;
+
+    if (!isMapOwner) {
+      setMapError("マップを削除できるのは作成者だけです．");
+      return;
+    }
+
+    if (
+      !window.confirm(
+        "このマップを削除しますか？中のピンもすべて削除され，元に戻せません．",
+      )
+    ) {
+      return;
+    }
+
+    setSavingMap(true);
+    setMapError("");
+
+    try {
+      const { error: deleteError } = await supabase
+        .from("maps")
+        .delete()
+        .eq("id", id);
+
+      if (deleteError) {
+        console.error("マップの削除に失敗", deleteError);
+        setMapError(`削除に失敗しました．${deleteError.message}`);
+        return;
+      }
+
+      navigate("/", { replace: true });
+    } catch (e) {
+      console.error("マップの削除中に予期しないエラー", e);
+      setMapError(`予期しないエラーが発生しました．${e?.message ?? e}`);
+    } finally {
+      setSavingMap(false);
+    }
+  }
+
   /** パネルの入力を pins テーブルに保存する */
-  async function handleSavePin({ title, content, pinType }) {
+  async function handleSavePin({ title, content, pinType, kind, linkMapId }) {
     if (savingPin || !selectedPin) return;
 
     setSavingPin(true);
@@ -310,6 +483,8 @@ export default function MapDetail() {
           title,
           content,
           pin_type: pinType,
+          kind,
+          link_map_id: kind === "button" ? linkMapId : null,
           user_id: user.id,
         })
         .select()
@@ -339,7 +514,7 @@ export default function MapDetail() {
   }
 
   /** パネルで編集した内容を更新する */
-  async function handleUpdatePin({ title, content, pinType }) {
+  async function handleUpdatePin({ title, content, pinType, kind, linkMapId }) {
     if (savingPin || !selectedPin) return;
 
     setSavingPin(true);
@@ -363,6 +538,8 @@ export default function MapDetail() {
           title,
           content,
           pin_type: pinType,
+          kind,
+          link_map_id: kind === "button" ? linkMapId : null,
         })
         .eq("id", selectedPin.id)
         .select()
@@ -452,112 +629,211 @@ export default function MapDetail() {
   }
 
   return (
-    <div className="flex h-full flex-col">
-      <div className="border-b border-slate-200 px-6 py-3">
 
-        {/* タイトルとコピーボタンを横並びにするためにflexを使用 */}
-        <div className="flex items-center justify-between">
-          <h2 className="text-lg font-bold text-slate-800">{map.title}</h2>
-          {/* コピーボタンを追加 */}
-          <button
-            onClick={copyUrl}
-            className="rounded-md bg-slate-100 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-200"
-          >
-            {copied ? "コピーしました！" : "このマップのURLをコピー"}
-          </button>
-        </div>
+    <div className="flex h-full">
+      <div className="flex h-full flex-1 flex-col">
+        <div className="border-b border-slate-200 px-6 py-3">
+          {isEditingMap ? (
+            <form onSubmit={handleUpdateMap}>
+              <input
+                type="text"
+                value={mapTitle}
+                onChange={(e) => setMapTitle(e.target.value)}
+                disabled={savingMap}
+                maxLength={100}
+                className="w-full rounded border border-slate-300 px-3 py-1.5 text-lg font-bold disabled:bg-slate-100"
+              />
+              <textarea
+                value={mapDescription}
+                onChange={(e) => setMapDescription(e.target.value)}
+                disabled={savingMap}
+                maxLength={500}
+                rows={2}
+                placeholder="説明（任意）"
+                className="mt-2 w-full rounded border border-slate-300 px-3 py-2 text-sm disabled:bg-slate-100"
+              />
 
-        {map.description && (
-          <p className="mt-1 text-sm text-slate-500">{map.description}</p>
+              {mapError && (
+                <p className="mt-2 rounded bg-red-50 p-2 text-sm text-red-700">
+                  {mapError}
+                </p>
+              )}
+
+              <div className="mt-2 flex gap-2">
+                <button
+                  type="submit"
+                  disabled={savingMap || mapTitle.trim() === ""}
+                  className="rounded bg-slate-800 px-3 py-1.5 text-xs text-white disabled:cursor-not-allowed disabled:bg-slate-300"
+                >
+                  {savingMap ? "保存中..." : "保存"}
+                </button>
+                <button
+                  type="button"
+                  onClick={cancelEditingMap}
+                  disabled={savingMap}
+                  className="rounded border border-slate-300 px-3 py-1.5 text-xs text-slate-700 disabled:opacity-50"
+                >
+                  キャンセル
+                </button>
+            </div>
+          </form>
+        ) : (
+          <>
+            {/* タイトルとボタン類を横並びにするためにflexを使用 */}
+            <div className="flex items-center justify-between gap-2">
+              <h2 className="text-lg font-bold text-slate-800">{map.title}</h2>
+              <div className="flex shrink-0 gap-2">
+                <button
+                  onClick={copyUrl}
+                  className="rounded-md bg-slate-100 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-200"
+                >
+                  {copied ? "コピーしました！" : "このマップのURLをコピー"}
+                </button>
+                <button
+                  onClick={startEditingMap}
+                  className="rounded-md border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                >
+                  編集
+                </button>
+                {/* マップの削除は作成者だけができる */}
+                {isMapOwner && (
+                  <button
+                    onClick={handleDeleteMap}
+                    disabled={savingMap}
+                    className="rounded-md border border-red-200 px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 disabled:opacity-50"
+                  >
+                    削除
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {map.description && (
+              <p className="mt-1 text-sm text-slate-500">{map.description}</p>
+            )}
+            {mapError && (
+              <p className="mt-2 rounded bg-red-50 p-2 text-sm text-red-700">
+                {mapError}
+              </p>
+            )}
+          </>
         )}
 
-        {/* ピンの種類ごとの表示・非表示の切替 */}
-        <div className="mt-3 flex flex-wrap items-center gap-3 border-t border-slate-100 pt-3">
-
-          <div className="flex items-center gap-2 mr-2">
-            <span className="text-xs font-semibold text-slate-600">
-              タイトル検索:
-            </span>
-            <input
-              type="text"
-              placeholder="ピンを検索..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="rounded-md border border-slate-300 px-2.5 py-1 text-xs focus:border-blue-500 focus:outline-none"
-            />
-          </div>
-
-          <span className="text-xs font-semibold text-slate-600">
-            表示フィルタ:
-          </span>
-
-          {/* 一括選択、解除 */}
-          <div className="flex items-center gap-1.5 mr-2">
-            <button
-              type="button"
-              onClick={handleSelectAll}
-              className="text-xs text-blue-600 hover:underline"
-            >
-              すべてオン
-            </button>
-            <span className="text-xs text-slate-300">|</span>
-            <button
-              type="button"
-              onClick={handleDeselectAll}
-              className="text-xs text-blue-600 hover:underline"
-            >
-              すべてオフ
-            </button>
-          </div>
-
-          {availablePinTypes.map((type) => (
-            <label
-              key={type.value}
-              className="flex items-center gap-1.5 text-xs text-slate-700 cursor-pointer select-none"
-            >
-              <input
-                type="checkbox"
-                checked={isTypeEnabled(type.value)}
-                onChange={() => handleTypeToggle(type.value)}
-                className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-              />
-              <span>
-                {type.isCustom
-                  ? type.label
-                  : `${type.emoji}: ${type.label}`}
+          {/* ピンの種類ごとの表示・非表示の切替，タイトル検索 */}
+          <div className="mt-3 flex flex-wrap items-center gap-3 border-t border-slate-100 pt-3">
+            <div className="flex items-center gap-2 mr-2">
+              <span className="text-xs font-semibold text-slate-600">
+                タイトル検索:
               </span>
-            </label>
-          ))}
+              <input
+                type="text"
+                placeholder="ピンを検索..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="rounded-md border border-slate-300 px-2.5 py-1 text-xs focus:border-blue-500 focus:outline-none"
+              />
+            </div>
+
+            <span className="text-xs font-semibold text-slate-600">
+              表示フィルタ:
+            </span>
+
+            {/* 一括選択、解除 */}
+            <div className="flex items-center gap-1.5 mr-2">
+              <button
+                type="button"
+                onClick={handleSelectAll}
+                className="text-xs text-blue-600 hover:underline"
+              >
+                すべてオン
+              </button>
+              <span className="text-xs text-slate-300">|</span>
+              <button
+                type="button"
+                onClick={handleDeselectAll}
+                className="text-xs text-blue-600 hover:underline"
+              >
+                すべてオフ
+              </button>
+            </div>
+
+            {availablePinTypes.map((type) => (
+              <label
+                key={type.value}
+                className="flex items-center gap-1.5 text-xs text-slate-700 cursor-pointer select-none"
+              >
+                <input
+                  type="checkbox"
+                  checked={isTypeEnabled(type.value)}
+                  onChange={() => handleTypeToggle(type.value)}
+                  className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                />
+                <span>
+                  {type.isCustom
+                    ? type.label
+                    : `${type.emoji}: ${type.label}`}
+                </span>
+              </label>
+            ))}
+          </div>
+
+          <p className="mt-1 text-xs text-slate-400">
+            画像をクリックするとピンを立てられます．
+          </p>
         </div>
 
-        <p className="mt-1 text-xs text-slate-400">
-          画像をクリックするとピンを立てられます．
-        </p>
+        <div className="min-h-0 flex-1">
+          <MapView
+            map={map}
+            pins={visiblePins}
+            pendingPin={
+              selectedPin && !selectedPin.id
+                ? { ...selectedPin, ...pendingPinAppearance }
+                : null
+            }
+            onPinClick={handlePinClick}
+            onMapClick={handleMapClick}
+          />
+        </div>
+
+        {selectedPin && (
+          <PinPanel
+            pin={selectedPin}
+            currentUser={currentUser}
+            saving={savingPin}
+            error={pinError}
+            mapOptions={allMaps.filter((m) => m.id !== id)}
+            onSave={handleSavePin}
+            onClose={closePanel}
+            // Update, Deleteを追加
+            onUpdate={handleUpdatePin}
+            onDelete={handleDeletePin}
+            onPreviewChange={setPendingPinAppearance}
+          />
+        )}
       </div>
 
-      <div className="min-h-0 flex-1">
-        <MapView
-          map={map}
-          // pins={pins}
-          // visiblepinに変更
-          pins={visiblePins}
-          onPinClick={handlePinClick}
-          onMapClick={handleMapClick}
-        />
-      </div>
-
-      {selectedPin && (
-        <PinPanel
-          pin={selectedPin}
-          currentUser={currentUser}
-          saving={savingPin}
-          error={pinError}
-          onSave={handleSavePin}
-          onClose={closePanel}
-          // Update, Deleteを追加
-          onUpdate={handleUpdatePin}
-          onDelete={handleDeletePin}
-        />
+      {/* 同じフォルダの他マップへの切り替え．フォルダに入っていないマップでは出さない． */}
+      {siblingMaps.length > 0 && (
+        <aside className="w-48 shrink-0 overflow-auto border-l border-slate-200 p-3">
+          <p className="text-xs font-bold text-slate-400">同じフォルダのマップ</p>
+          <ul className="mt-2 space-y-1">
+            {siblingMaps.map((sibling) => (
+              <li key={sibling.id}>
+                <Link
+                  to={`/maps/${sibling.id}`}
+                  className={`block truncate rounded px-2 py-1.5 text-sm ${
+                    sibling.id === map.id
+                      ? "bg-slate-800 text-white"
+                      : "text-slate-700 hover:bg-slate-100"
+                  }`}
+                >
+                  {sibling.title}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </aside>
       )}
     </div>
   );
