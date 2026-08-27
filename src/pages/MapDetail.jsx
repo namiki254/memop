@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import Loading from "../components/Loading";
 import ErrorMessage from "../components/ErrorMessage";
@@ -39,6 +39,9 @@ export default function MapDetail() {
   // コピー状態を覚える
   const [copied, setCopied] = useState(false);
 
+  // 同じフォルダに入っている他のマップ（#65のフォルダ機能が前提）．
+  // フォルダに入っていないマップ（folder_id が null）では空のまま．
+  const [siblingMaps, setSiblingMaps] = useState([]);
   // 今ログインしている人が，このマップの作成者かどうか（削除の許可判定に使う）
   const isMapOwner = currentUser?.id === map?.user_id;
 
@@ -127,6 +130,10 @@ export default function MapDetail() {
     setError(null);
     setMap(null);
     setPins([]);
+    setSelectedPin(null);
+    setPinError("");
+    setIsEditingMap(false);
+    setMapError("");
 
     try {
       // 1. mapsテーブルから、URLのIDに一致するマップを取得
@@ -178,6 +185,35 @@ export default function MapDetail() {
   useEffect(() => {
     loadMapDetail();
   }, [loadMapDetail]);
+
+  // 同じフォルダの他マップを取る．
+  // 依存を map?.folder_id（値）にしているので，同じフォルダ内で
+  // マップを切り替えても（id は変わるが folder_id は変わらない）取り直さない．
+  useEffect(() => {
+    if (!map?.folder_id) {
+      setSiblingMaps([]);
+      return;
+    }
+
+    let ignore = false;
+
+    async function loadSiblings() {
+      const { data, error: siblingsError } = await supabase
+        .from("maps")
+        .select("id, title")
+        .eq("folder_id", map.folder_id)
+        .order("created_at", { ascending: true });
+
+      if (!ignore && !siblingsError) {
+        setSiblingMaps(data ?? []);
+      }
+    }
+
+    loadSiblings();
+    return () => {
+      ignore = true;
+    };
+  }, [map?.folder_id]);
 
   // 現在ログインしているユーザーを取得する
   useEffect(() => {
@@ -544,50 +580,52 @@ export default function MapDetail() {
   }
 
   return (
-    <div className="flex h-full flex-col">
-      <div className="border-b border-slate-200 px-6 py-3">
-        {isEditingMap ? (
-          <form onSubmit={handleUpdateMap}>
-            <input
-              type="text"
-              value={mapTitle}
-              onChange={(e) => setMapTitle(e.target.value)}
-              disabled={savingMap}
-              maxLength={100}
-              className="w-full rounded border border-slate-300 px-3 py-1.5 text-lg font-bold disabled:bg-slate-100"
-            />
-            <textarea
-              value={mapDescription}
-              onChange={(e) => setMapDescription(e.target.value)}
-              disabled={savingMap}
-              maxLength={500}
-              rows={2}
-              placeholder="説明（任意）"
-              className="mt-2 w-full rounded border border-slate-300 px-3 py-2 text-sm disabled:bg-slate-100"
-            />
 
-            {mapError && (
-              <p className="mt-2 rounded bg-red-50 p-2 text-sm text-red-700">
-                {mapError}
-              </p>
-            )}
-
-            <div className="mt-2 flex gap-2">
-              <button
-                type="submit"
-                disabled={savingMap || mapTitle.trim() === ""}
-                className="rounded bg-slate-800 px-3 py-1.5 text-xs text-white disabled:cursor-not-allowed disabled:bg-slate-300"
-              >
-                {savingMap ? "保存中..." : "保存"}
-              </button>
-              <button
-                type="button"
-                onClick={cancelEditingMap}
+    <div className="flex h-full">
+      <div className="flex h-full flex-1 flex-col">
+        <div className="border-b border-slate-200 px-6 py-3">
+          {isEditingMap ? (
+            <form onSubmit={handleUpdateMap}>
+              <input
+                type="text"
+                value={mapTitle}
+                onChange={(e) => setMapTitle(e.target.value)}
                 disabled={savingMap}
-                className="rounded border border-slate-300 px-3 py-1.5 text-xs text-slate-700 disabled:opacity-50"
-              >
-                キャンセル
-              </button>
+                maxLength={100}
+                className="w-full rounded border border-slate-300 px-3 py-1.5 text-lg font-bold disabled:bg-slate-100"
+              />
+              <textarea
+                value={mapDescription}
+                onChange={(e) => setMapDescription(e.target.value)}
+                disabled={savingMap}
+                maxLength={500}
+                rows={2}
+                placeholder="説明（任意）"
+                className="mt-2 w-full rounded border border-slate-300 px-3 py-2 text-sm disabled:bg-slate-100"
+              />
+
+              {mapError && (
+                <p className="mt-2 rounded bg-red-50 p-2 text-sm text-red-700">
+                  {mapError}
+                </p>
+              )}
+
+              <div className="mt-2 flex gap-2">
+                <button
+                  type="submit"
+                  disabled={savingMap || mapTitle.trim() === ""}
+                  className="rounded bg-slate-800 px-3 py-1.5 text-xs text-white disabled:cursor-not-allowed disabled:bg-slate-300"
+                >
+                  {savingMap ? "保存中..." : "保存"}
+                </button>
+                <button
+                  type="button"
+                  onClick={cancelEditingMap}
+                  disabled={savingMap}
+                  className="rounded border border-slate-300 px-3 py-1.5 text-xs text-slate-700 disabled:opacity-50"
+                >
+                  キャンセル
+                </button>
             </div>
           </form>
         ) : (
@@ -632,79 +670,101 @@ export default function MapDetail() {
           </>
         )}
 
-        {/* ピンの種類ごとの表示・非表示の切替 */}
-        <div className="mt-3 flex flex-wrap items-center gap-3 border-t border-slate-100 pt-3">
-          <span className="text-xs font-semibold text-slate-600">
-            表示フィルタ:
-          </span>
+          {/* ピンの種類ごとの表示・非表示の切替 */}
+          <div className="mt-3 flex flex-wrap items-center gap-3 border-t border-slate-100 pt-3">
+            <span className="text-xs font-semibold text-slate-600">
+              表示フィルタ:
+            </span>
 
-          {/* 一括選択、解除 */}
-          <div className="flex items-center gap-1.5 mr-2">
-            <button
-              type="button"
-              onClick={handleSelectAll}
-              className="text-xs text-blue-600 hover:underline"
-            >
-              すべてオン
-            </button>
-            <span className="text-xs text-slate-300">|</span>
-            <button
-              type="button"
-              onClick={handleDeselectAll}
-              className="text-xs text-blue-600 hover:underline"
-            >
-              すべてオフ
-            </button>
+            {/* 一括選択、解除 */}
+            <div className="flex items-center gap-1.5 mr-2">
+              <button
+                type="button"
+                onClick={handleSelectAll}
+                className="text-xs text-blue-600 hover:underline"
+              >
+                すべてオン
+              </button>
+              <span className="text-xs text-slate-300">|</span>
+              <button
+                type="button"
+                onClick={handleDeselectAll}
+                className="text-xs text-blue-600 hover:underline"
+              >
+                すべてオフ
+              </button>
+            </div>
+
+            {availablePinTypes.map((type) => (
+              <label
+                key={type.value}
+                className="flex items-center gap-1.5 text-xs text-slate-700 cursor-pointer select-none"
+              >
+                <input
+                  type="checkbox"
+                  checked={isTypeEnabled(type.value)}
+                  onChange={() => handleTypeToggle(type.value)}
+                  className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                />
+                <span>
+                  {type.isCustom
+                    ? type.label
+                    : `${type.emoji}: ${type.label}`}
+                </span>
+              </label>
+            ))}
           </div>
 
-          {availablePinTypes.map((type) => (
-            <label
-              key={type.value}
-              className="flex items-center gap-1.5 text-xs text-slate-700 cursor-pointer select-none"
-            >
-              <input
-                type="checkbox"
-                checked={isTypeEnabled(type.value)}
-                onChange={() => handleTypeToggle(type.value)}
-                className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-              />
-              <span>
-                {type.isCustom
-                  ? type.label
-                  : `${type.emoji}: ${type.label}`}
-              </span>
-            </label>
-          ))}
+          <p className="mt-1 text-xs text-slate-400">
+            画像をクリックするとピンを立てられます．
+          </p>
         </div>
 
-        <p className="mt-1 text-xs text-slate-400">
-          画像をクリックするとピンを立てられます．
-        </p>
+        <div className="min-h-0 flex-1">
+          <MapView
+            map={map}
+            pins={visiblePins}
+            onPinClick={handlePinClick}
+            onMapClick={handleMapClick}
+          />
+        </div>
+
+        {selectedPin && (
+          <PinPanel
+            pin={selectedPin}
+            currentUser={currentUser}
+            saving={savingPin}
+            error={pinError}
+            onSave={handleSavePin}
+            onClose={closePanel}
+            // Update, Deleteを追加
+            onUpdate={handleUpdatePin}
+            onDelete={handleDeletePin}
+          />
+        )}
       </div>
 
-      <div className="min-h-0 flex-1">
-        <MapView
-          map={map}
-          // pins={pins}
-          // visiblepinに変更
-          pins={visiblePins}
-          onPinClick={handlePinClick}
-          onMapClick={handleMapClick}
-        />
-      </div>
-
-      {selectedPin && (
-        <PinPanel
-          pin={selectedPin}
-          currentUser={currentUser}
-          saving={savingPin}
-          error={pinError}
-          onSave={handleSavePin}
-          onClose={closePanel}
-          // Update, Deleteを追加
-          onUpdate={handleUpdatePin}
-          onDelete={handleDeletePin}
-        />
+      {/* 同じフォルダの他マップへの切り替え．フォルダに入っていないマップでは出さない． */}
+      {siblingMaps.length > 0 && (
+        <aside className="w-48 shrink-0 overflow-auto border-l border-slate-200 p-3">
+          <p className="text-xs font-bold text-slate-400">同じフォルダのマップ</p>
+          <ul className="mt-2 space-y-1">
+            {siblingMaps.map((sibling) => (
+              <li key={sibling.id}>
+                <Link
+                  to={`/maps/${sibling.id}`}
+                  className={`block truncate rounded px-2 py-1.5 text-sm ${
+                    sibling.id === map.id
+                      ? "bg-slate-800 text-white"
+                      : "text-slate-700 hover:bg-slate-100"
+                  }`}
+                >
+                  {sibling.title}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </aside>
       )}
     </div>
   );
