@@ -20,6 +20,7 @@ import { PIN_TYPES, getPinEmoji } from "../lib/pinTypes";
  */
 export function PinPanel({
   pin,
+  currentUser,
   saving = false,
   error = "",
   onSave,
@@ -29,6 +30,9 @@ export function PinPanel({
   onDelete,
 }) {
   const isNew = !pin?.id;
+
+  // 今ログインしている人が、このピンの作成者かどうか
+  const isOwner = currentUser?.id === pin?.user_id;
 
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
@@ -236,24 +240,26 @@ export function PinPanel({
             </p>
           )}
           {/* 編集、削除ボタン */}
-          <div className="mt-4 flex justify-between border-t border-slate-100 pt-3">
-            <button
-              type="button"
-              onClick={() => setIsEditing(true)}
-              disabled={saving}
-              className="rounded border border-slate-300 px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50 disabled:opacity-50"
-            >
-              編集
-            </button>
-            <button
-              type="button"
-              onClick={onDelete}
-              disabled={saving}
-              className="rounded border border-red-200 px-3 py-1.5 text-xs text-red-600 hover:bg-red-50 disabled:opacity-50"
-            >
-              削除
-            </button>
-          </div>
+          {isOwner && (
+            <div className="mt-4 flex justify-between border-t border-slate-100 pt-3">
+              <button
+                type="button"
+                onClick={() => setIsEditing(true)}
+                disabled={saving}
+                className="rounded border border-slate-300 px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+              >
+                編集
+              </button>
+              <button
+                type="button"
+                onClick={onDelete}
+                disabled={saving}
+                className="rounded border border-red-200 px-3 py-1.5 text-xs text-red-600 hover:bg-red-50 disabled:opacity-50"
+              >
+                削除
+              </button>
+            </div>
+          )}
         </div>
       )}
     </div>

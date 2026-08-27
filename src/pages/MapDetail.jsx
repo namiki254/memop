@@ -22,6 +22,8 @@ export default function MapDetail() {
   // Supabaseから取得したデータを保存する
   const [map, setMap] = useState(null);
   const [pins, setPins] = useState([]);
+  // 現在ログインしているユーザーを保存する
+  const [currentUser, setCurrentUser] = useState(null);
   // 画面の状態
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -164,6 +166,40 @@ export default function MapDetail() {
     loadMapDetail();
   }, [loadMapDetail]);
 
+  // 現在ログインしているユーザーを取得する
+  useEffect(() => {
+    async function loadCurrentUser() {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      setCurrentUser(user);
+    }
+
+       
+  loadCurrentUser();
+
+  //ログイン状態の監視
+  const {
+    data: { subscription },
+  } = supabase.auth.onAuthStateChange((_event, newSession) => {
+    setCurrentUser(newSession?.user ?? null);
+
+    // 操作中にログアウトした場合はパネルを閉じる
+    if (!newSession) {
+      setSelectedPin(null);
+    }
+  });
+
+  //ページを離れたら監視を中止
+  return () => {
+    subscription.unsubscribe();
+  };
+
+  },[]);
+  
+
+
   // 他の人が置いた・書き直した・消したピンを，リロードなしで反映する．
   //
   // Supabase側で pins テーブルの変更配信（Replication）を有効にしておかないと，
@@ -202,8 +238,18 @@ export default function MapDetail() {
   }, [id]);
 
   /** 画像の何もない場所がクリックされた．そこに新しいピンを作る準備をする */
-  function handleMapClick(x, y) {
+  async function handleMapClick(x, y) {
     setPinError("");
+    
+    // 現在ログインしているユーザーを確認する
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      alert("ピンを作成するにはログインしてください");
+      return;
+    }
     setSelectedPin({ x, y });
   }
 
@@ -234,6 +280,16 @@ export default function MapDetail() {
     setPinError("");
 
     try {
+      // 現在ログインしているユーザーを取得する
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser();
+
+      if (userError || !user) {
+        setPinError("ピンを作成するにはログインしてください．");
+        return;
+      }
       const { data: created, error: insertError } = await supabase
         .from("pins")
         .insert({
@@ -243,6 +299,7 @@ export default function MapDetail() {
           title,
           content,
           pin_type: pinType,
+          user_id: user.id,
         })
         .select()
         .single();
@@ -278,6 +335,17 @@ export default function MapDetail() {
     setPinError("");
 
     try {
+      // 現在ログインしているユーザーを取得する
+      const {
+        data: { user },
+        error: userError,
+        } = await supabase.auth.getUser();
+
+      if (userError || !user || user.id !== selectedPin.user_id) {
+        setPinError("このピンは編集できません．");
+        return;
+      }
+
       const { data: updated, error: updateError } = await supabase
         .from("pins")
         .update({
@@ -312,15 +380,25 @@ export default function MapDetail() {
   async function handleDeletePin() {
     if (savingPin || !selectedPin) return;
 
-    // 通信の前に確認ダイアログを出す
-    if (!window.confirm("このピンを削除しますか？")) {
-      return;
-    }
-
     setSavingPin(true);
     setPinError("");
 
     try {
+      // 現在ログインしているユーザーを取得する
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser();
+
+      if (userError || !user || user.id !== selectedPin.user_id) {
+        setPinError("このピンは削除できません．");
+        return;
+      }
+
+      // 本人であることを確認してから削除確認を出す
+      if (!window.confirm("このピンを削除しますか？")) {
+        return;
+      }
       const { error: deleteError } = await supabase
         .from("pins")
         .delete()
@@ -446,6 +524,7 @@ export default function MapDetail() {
       {selectedPin && (
         <PinPanel
           pin={selectedPin}
+          currentUser={currentUser}
           saving={savingPin}
           error={pinError}
           onSave={handleSavePin}
