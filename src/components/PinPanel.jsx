@@ -64,8 +64,7 @@ export function PinPanel({
       isCustomPinType ? "custom" : pin?.pin_type ?? PIN_TYPES[0].value
     );
     setCustomPinType(isCustomPinType ? pin.pin_type : "");
-  }, [key])
-
+  }, [key, pin?.title, pin?.content, pin?.pin_type]);
   // 新規作成（onSave）と更新（onUpdate）を切り替える
   function handleSubmit(event) {
     event.preventDefault();
