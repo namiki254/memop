@@ -176,8 +176,30 @@ export default function MapDetail() {
       setCurrentUser(user);
     }
 
-    loadCurrentUser();
-  }, []);
+       
+  loadCurrentUser();
+
+  //ログイン状態の監視
+  const {
+    data: { subscription },
+  } = supabase.auth.onAuthStateChange((_event, newSession) => {
+    setCurrentUser(newSession?.user ?? null);
+
+    // 操作中にログアウトした場合はパネルを閉じる
+    if (!newSession) {
+      setSelectedPin(null);
+    }
+  });
+
+  //ページを離れたら監視を中止
+  return () => {
+    subscription.unsubscribe();
+  };
+
+  },[]);
+  
+
+
   // 他の人が置いた・書き直した・消したピンを，リロードなしで反映する．
   //
   // Supabase側で pins テーブルの変更配信（Replication）を有効にしておかないと，
