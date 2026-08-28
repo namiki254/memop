@@ -484,6 +484,14 @@ export default function MapDetail() {
     setSelectedPin(pin);
   }
 
+
+  /** マップ移動ボタンをダブルクリックしたら直接移動する */
+  async function handlePinDoubleClick(pin) {
+    if (pin.kind !== "button") return;
+
+    await handleNavigateToMap(pin.link_map_id);
+  }
+
   /** パネルの移動ボタンから移動する */
   async function handleNavigateToMap(linkMapId) {
     setPinError("");
@@ -1109,6 +1117,7 @@ export default function MapDetail() {
                 : null
             }
             onPinClick={handlePinClick}
+            onPinDoubleClick={handlePinDoubleClick}
             onMapClick={isEditingPin ? undefined : handleMapClick}
             movablePinId={isEditingPin ? selectedPin?.id : null}
             onPinMove={handleMovePin}

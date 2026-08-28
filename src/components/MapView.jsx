@@ -20,7 +20,7 @@ import { EmojiPin } from "./EmojiPin"
  */
 
 
-export function MapView({ map, pins = [], pendingPin = null, onPinClick, onMapClick, movablePinId, onPinMove, }) {
+export function MapView({ map, pins = [], pendingPin = null, onPinClick, onMapClick, onPinDoubleClick, movablePinId, onPinMove, }) {
   // 拡大率（scale）、最大拡大率（maxScale）のStateを管理
   const [scale, setScale] = useState(1);
   const [maxScale, setMaxScale] = useState(2); // フォールバック用初期値
@@ -98,6 +98,8 @@ export function MapView({ map, pins = [], pendingPin = null, onPinClick, onMapCl
         dragStartRef.current.scrollTop - deltaY;
     }
 
+
+
     function handleMouseUp(event) {
       if (event.button !== 2) return;
 
@@ -141,8 +143,8 @@ export function MapView({ map, pins = [], pendingPin = null, onPinClick, onMapCl
     };
   }
 
-  
-  
+
+
   /**
    * クリックされた場所を「画像に対する割合」に直して親へ渡す．
    *
@@ -257,8 +259,8 @@ export function MapView({ map, pins = [], pendingPin = null, onPinClick, onMapCl
       */}
       <div
         className={`flex min-h-full min-w-full ${isScaled
-            ? ""
-            : "items-start justify-center sm:items-center"
+          ? ""
+          : "items-start justify-center sm:items-center"
           }`}
       >
         {/* 
@@ -312,6 +314,13 @@ export function MapView({ map, pins = [], pendingPin = null, onPinClick, onMapCl
 
                 onPinClick?.(pin);
               }}
+              onDoubleClick={(event) => {
+                event.stopPropagation();
+
+                if (movablePinId === pin.id) return;
+
+                onPinDoubleClick?.(pin);
+              }}
               onPointerDown={(event) => {
                 if (movablePinId !== pin.id) return;
 
@@ -327,8 +336,8 @@ export function MapView({ map, pins = [], pendingPin = null, onPinClick, onMapCl
                 top: `${pin.y * 100}%`,
               }}
               className={`absolute -translate-x-1/2 -translate-y-full transition-transform hover:scale-125 focus:outline-none ${movablePinId === pin.id
-                  ? "touch-none cursor-grab animate-pulse opacity-70 active:cursor-grabbing"
-                  : ""
+                ? "touch-none cursor-grab animate-pulse opacity-70 active:cursor-grabbing"
+                : ""
                 }`}
               title={pin.title}
             >
