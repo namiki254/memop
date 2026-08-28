@@ -158,7 +158,20 @@ export function PinPanel({
   }
 
   return (
-    <div className="fixed inset-x-0 bottom-0 z-10 border-t border-slate-200 bg-white p-4 shadow-lg sm:inset-x-auto sm:right-4 sm:bottom-4 sm:w-80 sm:rounded sm:border">
+    <div className="
+      fixed inset-x-0 bottom-0 z-10
+      border-t border-rose-100
+      bg-white
+      p-5
+      shadow-xl
+
+      sm:inset-x-auto
+      sm:right-5
+      sm:bottom-5
+      sm:w-80
+      sm:rounded-3xl
+      sm:border
+    ">
       {/* フォームを表示する条件にisEditingも追加 */}
       {isNew || isEditing ? ( // ★ isEditing も追加
         <form onSubmit={handleSubmit}>
@@ -225,7 +238,20 @@ export function PinPanel({
                 ? "ボタンの名前（例：ララポートへ）"
                 : "タイトル（例：おすすめのカフェ）"
             }
-            className="mt-2 w-full rounded border border-slate-300 px-3 py-2 text-sm disabled:bg-slate-100"
+            className="mt-2
+            w-full
+            border
+            rounded-xl
+            border-rose-100
+            bg-rose-50/30
+            focus:border-rose-300
+            focus:ring-4
+            focus:ring-rose-100
+            outline-none
+            px-3
+            py-2
+            text-sm
+            disabled:bg-slate-100"
           />
 
           {kind === "button" ? (

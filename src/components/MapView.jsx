@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { getPinEmoji } from "../lib/pinTypes";
+import { EmojiPin } from "./EmojiPin"
 
 /**
  * 地図表示コンポーネント．
@@ -289,9 +290,8 @@ export function MapView({ map, pins = [], pendingPin = null, onPinClick, onMapCl
                   </span>
                 </span>
               ) : (
-                <span className="text-2xl drop-shadow">
-                  {getPinEmoji(pin.pin_type)}
-                </span>
+                <EmojiPin emoji={getPinEmoji(pin.pin_type)} />
+                
               )}
             </button>
           ))}
@@ -311,9 +311,7 @@ export function MapView({ map, pins = [], pendingPin = null, onPinClick, onMapCl
                   🚪
                 </span>
               ) : (
-                <span className="block text-3xl drop-shadow">
-                  {getPinEmoji(pendingPin.pin_type)}
-                </span>
+                <EmojiPin emoji={getPinEmoji(pendingPin.pin_type)} preview  />
               )}
             </div>
           )}
