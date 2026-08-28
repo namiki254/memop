@@ -19,6 +19,7 @@ import { EmojiPin } from "./EmojiPin"
  *   こうしておくと，画面や画像の大きさが変わってもピンがずれない．
  */
 
+
 export function MapView({ map, pins = [], pendingPin = null, onPinClick, onMapClick, movablePinId, onPinMove, }) {
   // 拡大率（scale）、最大拡大率（maxScale）のStateを管理
   const [scale, setScale] = useState(1);
@@ -272,7 +273,7 @@ export function MapView({ map, pins = [], pendingPin = null, onPinClick, onMapCl
               }}
               className={`absolute -translate-x-1/2 -translate-y-full transition-transform hover:scale-125 focus:outline-none ${
                 movablePinId === pin.id
-                  ? "touch-none cursor-grab active:cursor-grabbing"
+                  ? "touch-none cursor-grab animate-pulse opacity-70 active:cursor-grabbing"
                   : ""
               }`}
               title={pin.title}
@@ -290,7 +291,7 @@ export function MapView({ map, pins = [], pendingPin = null, onPinClick, onMapCl
                   </span>
                 </span>
               ) : (
-                <EmojiPin emoji={getPinEmoji(pin.pin_type)} />
+                <EmojiPin emoji={getPinEmoji(pin.pin_type)} size="sm"/>
                 
               )}
             </button>
@@ -311,7 +312,7 @@ export function MapView({ map, pins = [], pendingPin = null, onPinClick, onMapCl
                   🚪
                 </span>
               ) : (
-                <EmojiPin emoji={getPinEmoji(pendingPin.pin_type)} preview  />
+                <EmojiPin emoji={getPinEmoji(pendingPin.pin_type)} preview size="sm"/>
               )}
             </div>
           )}

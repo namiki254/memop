@@ -95,7 +95,7 @@ export function PinPanel({
   }, [linkMapId, firstMapOptionId]);
 
   useEffect(() => {
-    if (!isNew) return;
+    if (!isNew && !isEditing) return;
 
     const previewPinType =
       pinType === "custom"
@@ -106,7 +106,7 @@ export function PinPanel({
       kind,
       pin_type: previewPinType,
     });
-  }, [isNew, kind, pinType, customPinType, onPreviewChange]);
+  }, [isNew, isEditing, kind, pinType, customPinType, onPreviewChange]);
 
   // 新規作成（onSave）と更新（onUpdate）を切り替える
   function handleSubmit(event) {
