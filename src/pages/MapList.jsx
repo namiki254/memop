@@ -75,54 +75,54 @@ export default function MapList() {
   const trimmedQuery = searchQuery.trim();
   const normalizedQuery = normalizeSearchText(trimmedQuery);
 
-function compareByKey(key) {
-  return (a, b) => {
-    const valA = a[key];
-    const valB = b[key];
-    const aMissing = valA === undefined || valA === null;
-    const bMissing = valB === undefined || valB === null;
+  function compareByKey(key) {
+    return (a, b) => {
+      const valA = a[key];
+      const valB = b[key];
+      const aMissing = valA === undefined || valA === null;
+      const bMissing = valB === undefined || valB === null;
 
-    if (aMissing && bMissing) return 0;
-    if (aMissing) return 1;
-    if (bMissing) return -1;
+      if (aMissing && bMissing) return 0;
+      if (aMissing) return 1;
+      if (bMissing) return -1;
 
-    if (typeof valA === "string") {
-      return valA.localeCompare(valB, "ja");
-    }
-    if (valA < valB) return -1;
-    if (valA > valB) return 1;
-    return 0;
-  };
-}
+      if (typeof valA === "string") {
+        return valA.localeCompare(valB, "ja");
+      }
+      if (valA < valB) return -1;
+      if (valA > valB) return 1;
+      return 0;
+    };
+  }
 
-const filteredMaps = maps.filter((map) => {
-  const matchesType = displayType === "all" || displayType === "maps";
-  const matchesSearch =
-    !trimmedQuery ||
-    normalizeSearchText(map.title).includes(normalizedQuery);
-  const matchesFavorite = !showOnlyFavorites || map.is_favorited;
-  return matchesType && matchesSearch && matchesFavorite;
-});
+  const filteredMaps = maps.filter((map) => {
+    const matchesType = displayType === "all" || displayType === "maps";
+    const matchesSearch =
+      !trimmedQuery ||
+      normalizeSearchText(map.title).includes(normalizedQuery);
+    const matchesFavorite = !showOnlyFavorites || map.is_favorited;
+    return matchesType && matchesSearch && matchesFavorite;
+  });
 
-const filteredFolders = childFolders.filter((f) => {
-  const matchesType = displayType === "all" || displayType === "folders";
-  const matchesSearch =
-    !trimmedQuery || normalizeSearchText(f.name).includes(normalizedQuery);
-  const matchesFavorite = !showOnlyFavorites || f.is_favorited;
-  return matchesType && matchesSearch && matchesFavorite;
-});
+  const filteredFolders = childFolders.filter((f) => {
+    const matchesType = displayType === "all" || displayType === "folders";
+    const matchesSearch =
+      !trimmedQuery || normalizeSearchText(f.name).includes(normalizedQuery);
+    const matchesFavorite = !showOnlyFavorites || f.is_favorited;
+    return matchesType && matchesSearch && matchesFavorite;
+  });
 
-const visibleMaps = [...filteredMaps].sort((a, b) => {
-  const cmp = compareByKey(sortKey)(a, b);
-  return sortOrder === "asc" ? cmp : -cmp;
-});
+  const visibleMaps = [...filteredMaps].sort((a, b) => {
+    const cmp = compareByKey(sortKey)(a, b);
+    return sortOrder === "asc" ? cmp : -cmp;
+  });
 
-const visibleFolders = [...filteredFolders].sort((a, b) => {
-  // フォルダは title ではなく name プロパティを使う
-  const key = sortKey === "title" ? "name" : sortKey;
-  const cmp = compareByKey(key)(a, b);
-  return sortOrder === "asc" ? cmp : -cmp;
-});
+  const visibleFolders = [...filteredFolders].sort((a, b) => {
+    // フォルダは title ではなく name プロパティを使う
+    const key = sortKey === "title" ? "name" : sortKey;
+    const cmp = compareByKey(key)(a, b);
+    return sortOrder === "asc" ? cmp : -cmp;
+  });
   const isEmpty = visibleFolders.length === 0 && visibleMaps.length === 0;
 
   // 現在ログインしているユーザーを取得する
@@ -344,8 +344,8 @@ const visibleFolders = [...filteredFolders].sort((a, b) => {
           ...f,
           is_favorited: currentUser
             ? (f.folder_favorites ?? []).some(
-                (fav) => fav.user_id === currentUser.id,
-              )
+              (fav) => fav.user_id === currentUser.id,
+            )
             : false,
         }));
 
@@ -362,8 +362,8 @@ const visibleFolders = [...filteredFolders].sort((a, b) => {
           ...m,
           is_favorited: currentUser
             ? (m.map_favorites ?? []).some(
-                (fav) => fav.user_id === currentUser.id,
-              )
+              (fav) => fav.user_id === currentUser.id,
+            )
             : false,
         }));
 
@@ -573,104 +573,104 @@ const visibleFolders = [...filteredFolders].sort((a, b) => {
     window.location.reload();
   }
 
-// フォルダのURLをコピーする
-async function copyFolderUrl() {
-  setFolderError("");
+  // フォルダのURLをコピーする
+  async function copyFolderUrl() {
+    setFolderError("");
 
-  try {
-    await navigator.clipboard.writeText(window.location.href);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  } catch (error) {
-    setFolderError(`URLのコピーに失敗しました. ${error.message}`);
-  }
-}
-
-// マップのお気に入りを切り替える
-async function toggleFavorite(event, mapId, isFavorited) {
-  event.preventDefault();
-  event.stopPropagation();
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    alert("お気に入り機能を利用するにはログインが必要です．");
-    return;
+    try {
+      await navigator.clipboard.writeText(window.location.href);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (error) {
+      setFolderError(`URLのコピーに失敗しました. ${error.message}`);
+    }
   }
 
-  try {
-    if (isFavorited) {
-      const { error: deleteError } = await supabase
-        .from("map_favorites")
-        .delete()
-        .eq("map_id", mapId)
-        .eq("user_id", user.id);
+  // マップのお気に入りを切り替える
+  async function toggleFavorite(event, mapId, isFavorited) {
+    event.preventDefault();
+    event.stopPropagation();
 
-      if (deleteError) throw deleteError;
-    } else {
-      const { error: insertError } = await supabase
-        .from("map_favorites")
-        .insert({ map_id: mapId, user_id: user.id });
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
 
-      if (insertError) throw insertError;
+    if (!user) {
+      alert("お気に入り機能を利用するにはログインが必要です．");
+      return;
     }
 
-    setMaps((current) =>
-      current.map((m) =>
-        m.id === mapId ? { ...m, is_favorited: !isFavorited } : m,
-      ),
-    );
-  } catch (e) {
-    console.error("マップのお気に入りの更新に失敗しました", e);
-    alert(`お気に入りの更新に失敗しました．${e.message}`);
+    try {
+      if (isFavorited) {
+        const { error: deleteError } = await supabase
+          .from("map_favorites")
+          .delete()
+          .eq("map_id", mapId)
+          .eq("user_id", user.id);
+
+        if (deleteError) throw deleteError;
+      } else {
+        const { error: insertError } = await supabase
+          .from("map_favorites")
+          .insert({ map_id: mapId, user_id: user.id });
+
+        if (insertError) throw insertError;
+      }
+
+      setMaps((current) =>
+        current.map((m) =>
+          m.id === mapId ? { ...m, is_favorited: !isFavorited } : m,
+        ),
+      );
+    } catch (e) {
+      console.error("マップのお気に入りの更新に失敗しました", e);
+      alert(`お気に入りの更新に失敗しました．${e.message}`);
+    }
   }
-}
 
-// フォルダのお気に入りを切り替える
-async function toggleFolderFavorite(event, targetFolderId, isFavorited) {
-  event.preventDefault();
-  event.stopPropagation();
+  // フォルダのお気に入りを切り替える
+  async function toggleFolderFavorite(event, targetFolderId, isFavorited) {
+    event.preventDefault();
+    event.stopPropagation();
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
 
-  if (!user) {
-    alert("お気に入り機能を利用するにはログインが必要です．");
-    return;
-  }
-
-  try {
-    if (isFavorited) {
-      const { error: deleteError } = await supabase
-        .from("folder_favorites")
-        .delete()
-        .eq("folder_id", targetFolderId)
-        .eq("user_id", user.id);
-
-      if (deleteError) throw deleteError;
-    } else {
-      const { error: insertError } = await supabase
-        .from("folder_favorites")
-        .insert({ folder_id: targetFolderId, user_id: user.id });
-
-      if (insertError) throw insertError;
+    if (!user) {
+      alert("お気に入り機能を利用するにはログインが必要です．");
+      return;
     }
 
-    setChildFolders((current) =>
-      current.map((f) =>
-        f.id === targetFolderId
-          ? { ...f, is_favorited: !isFavorited }
-          : f,
-      ),
-    );
-  } catch (e) {
-    console.error("フォルダのお気に入り更新に失敗しました", e);
-    alert(`お気に入りの更新に失敗しました．${e.message}`);
+    try {
+      if (isFavorited) {
+        const { error: deleteError } = await supabase
+          .from("folder_favorites")
+          .delete()
+          .eq("folder_id", targetFolderId)
+          .eq("user_id", user.id);
+
+        if (deleteError) throw deleteError;
+      } else {
+        const { error: insertError } = await supabase
+          .from("folder_favorites")
+          .insert({ folder_id: targetFolderId, user_id: user.id });
+
+        if (insertError) throw insertError;
+      }
+
+      setChildFolders((current) =>
+        current.map((f) =>
+          f.id === targetFolderId
+            ? { ...f, is_favorited: !isFavorited }
+            : f,
+        ),
+      );
+    } catch (e) {
+      console.error("フォルダのお気に入り更新に失敗しました", e);
+      alert(`お気に入りの更新に失敗しました．${e.message}`);
+    }
   }
-}
 
 
   if (loading) {
@@ -836,11 +836,10 @@ async function toggleFolderFavorite(event, targetFolderId, isFavorited) {
         <button
           type="button"
           onClick={() => setShowOnlyFavorites((prev) => !prev)}
-          className={`flex items-center gap-1 rounded-full border px-3 py-1.5 text-sm transition ${
-            showOnlyFavorites
-              ? "border-rose-300 bg-rose-50 font-bold text-rose-600"
-              : "border-rose-100 bg-white text-[#817878] hover:bg-rose-50"
-          }`}
+          className={`flex items-center gap-1 rounded-full border px-3 py-1.5 text-sm transition ${showOnlyFavorites
+            ? "border-rose-300 bg-rose-50 font-bold text-rose-600"
+            : "border-rose-100 bg-white text-[#817878] hover:bg-rose-50"
+            }`}
         >
           <span className={showOnlyFavorites ? "text-rose-500" : "text-slate-300"}>
             ♥
@@ -852,33 +851,30 @@ async function toggleFolderFavorite(event, targetFolderId, isFavorited) {
           <button
             type="button"
             onClick={() => setDisplayType("all")}
-            className={`px-3 py-1.5 transition ${
-              displayType === "all"
-                ? "bg-rose-400 font-bold text-white"
-                : "text-[#817878] hover:bg-rose-50"
-            }`}
+            className={`px-3 py-1.5 transition ${displayType === "all"
+              ? "bg-rose-400 font-bold text-white"
+              : "text-[#817878] hover:bg-rose-50"
+              }`}
           >
             すべて
           </button>
           <button
             type="button"
             onClick={() => setDisplayType("maps")}
-            className={`border-l border-rose-100 px-3 py-1.5 transition ${
-              displayType === "maps"
-                ? "bg-rose-400 font-bold text-white"
-                : "text-[#817878] hover:bg-rose-50"
-            }`}
+            className={`border-l border-rose-100 px-3 py-1.5 transition ${displayType === "maps"
+              ? "bg-rose-400 font-bold text-white"
+              : "text-[#817878] hover:bg-rose-50"
+              }`}
           >
             マップのみ
           </button>
           <button
             type="button"
             onClick={() => setDisplayType("folders")}
-            className={`border-l border-rose-100 px-3 py-1.5 transition ${
-              displayType === "folders"
-                ? "bg-rose-400 font-bold text-white"
-                : "text-[#817878] hover:bg-rose-50"
-            }`}
+            className={`border-l border-rose-100 px-3 py-1.5 transition ${displayType === "folders"
+              ? "bg-rose-400 font-bold text-white"
+              : "text-[#817878] hover:bg-rose-50"
+              }`}
           >
             フォルダのみ
           </button>
@@ -953,9 +949,8 @@ async function toggleFolderFavorite(event, targetFolderId, isFavorited) {
                 title={f.is_favorited ? "お気に入り解除" : "お気に入り登録"}
               >
                 <span
-                  className={`text-xl ${
-                    f.is_favorited ? "text-rose-500" : "text-slate-300"
-                  }`}
+                  className={`text-xl ${f.is_favorited ? "text-rose-500" : "text-slate-300"
+                    }`}
                 >
                   ♥
                 </span>
@@ -988,9 +983,8 @@ async function toggleFolderFavorite(event, targetFolderId, isFavorited) {
                 title={map.is_favorited ? "お気に入り解除" : "お気に入り登録"}
               >
                 <span
-                  className={`text-2xl drop-shadow ${
-                    map.is_favorited ? "text-rose-500" : "text-white/80"
-                  }`}
+                  className={`text-2xl drop-shadow ${map.is_favorited ? "text-rose-500" : "text-white/80"
+                    }`}
                 >
                   ♥
                 </span>
@@ -1016,9 +1010,17 @@ async function toggleFolderFavorite(event, targetFolderId, isFavorited) {
                 )}
 
                 <div className="p-4">
-                  <h3 className="font-bold text-[#3f3a3a]">
-                    {map.title}
-                  </h3>
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-bold text-[#3f3a3a] truncate">
+                      {map.title}
+                    </h3>
+
+                    {/* 公開/非公開バッジ */}
+                    <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium ${map.is_public ? "bg-slate-100 text-slate-600" : "bg-amber-100 text-amber-800"
+                      }`}>
+                      {map.is_public ? "公開" : "非公開"}
+                    </span>
+                  </div>
 
                   {map.description && (
                     <p className="mt-1 line-clamp-2 text-sm text-[#817878]">
@@ -1026,6 +1028,7 @@ async function toggleFolderFavorite(event, targetFolderId, isFavorited) {
                     </p>
                   )}
                 </div>
+
               </Link>
 
               {/* マップ作成者にだけ移動ボタンを表示する */}

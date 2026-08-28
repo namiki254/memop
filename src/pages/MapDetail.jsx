@@ -75,6 +75,7 @@ export default function MapDetail() {
   const [isEditingMap, setIsEditingMap] = useState(false);
   const [mapTitle, setMapTitle] = useState("");
   const [mapDescription, setMapDescription] = useState("");
+  const [mapIsPublic, setMapIsPublic] = useState(true); // 追加
   const [savingMap, setSavingMap] = useState(false);
   const [mapError, setMapError] = useState("");
 
@@ -261,6 +262,7 @@ export default function MapDetail() {
       setMap(mapData);
       setMapTitle(mapData.title);
       setMapDescription(mapData.description ?? "");
+      setMapIsPublic(mapData.is_public ?? true); // 追加
       setPins(pinData ?? []);
     } catch (fetchError) {
       setError(fetchError);
@@ -296,7 +298,7 @@ export default function MapDetail() {
     async function loadSiblings() {
       const { data, error: siblingsError } = await supabase
         .from("maps")
-        .select("id, title")
+        .select("id, title, is_public, user_id")   // is_public, user_idも取得
         .eq("folder_id", map.folder_id)
         .order("created_at", { ascending: true });
 
@@ -458,6 +460,7 @@ export default function MapDetail() {
   function cancelEditingMap() {
     setMapTitle(map.title);
     setMapDescription(map.description ?? "");
+    setMapIsPublic(map.is_public ?? true); // 追加
     setMapError("");
     setIsEditingMap(false);
   }
@@ -480,7 +483,11 @@ export default function MapDetail() {
       // RLSに加えて，クライアント側でも所有者条件を絞り込んでおく（多層防御）．
       let updateQuery = supabase
         .from("maps")
-        .update({ title: trimmedTitle, description: mapDescription.trim() })
+        .update({
+          title: trimmedTitle,
+          description: mapDescription.trim(),
+          is_public: mapIsPublic,   // 追加
+        })
         .eq("id", id);
       updateQuery = isUnownedMap
         ? updateQuery.is("user_id", null)
@@ -763,6 +770,21 @@ export default function MapDetail() {
                 className="mt-2 w-full rounded border border-slate-300 px-3 py-2 text-sm disabled:bg-slate-100"
               />
 
+              {/* 公開/非公開の切替 */}
+              <div className="mt-3 flex items-center gap-2">
+                <input
+                  id="editIsPublic"
+                  type="checkbox"
+                  checked={mapIsPublic}
+                  onChange={(e) => setMapIsPublic(e.target.checked)}
+                  disabled={savingMap}
+                  className="h-4 w-4 rounded border-slate-300 text-slate-800 focus:ring-slate-500"
+                />
+                <label htmlFor="editIsPublic" className="text-xs font-medium text-slate-700 cursor-pointer">
+                  このマップを公開する（{mapIsPublic ? "URLを知っている人は誰でも閲覧可" : "自分のみ閲覧可"}）
+                </label>
+              </div>
+
               {mapError && (
                 <p className="mt-2 rounded bg-red-50 p-2 text-sm text-red-700">
                   {mapError}
@@ -791,7 +813,18 @@ export default function MapDetail() {
             <>
               {/* タイトルとボタン類を横並びにするためにflexを使用 */}
               <div className="flex items-center justify-between gap-2">
-                <h2 className="text-lg font-bold text-slate-800">{map.title}</h2>
+
+                {/* タイトルとバッジをセットでまとめるグループ */}
+                <div className="flex items-center gap-2">
+                  <h2 className="text-lg font-bold text-slate-800">{map.title}</h2>
+
+                  {/* 公開/非公開バッジ */}
+                  <span className={`rounded-md px-3 py-1.5 text-sm font-medium ${map.is_public ? "bg-slate-100 text-slate-700" : "bg-amber-100 text-amber-800"
+                    }`}>
+                    {map.is_public ? "公開" : "非公開"}
+                  </span>
+                </div>
+
                 <div className="flex shrink-0 items-center gap-2">
                   {/* コピー成功時に左側にメッセージを表示 */}
                   {copied && (
@@ -940,26 +973,53 @@ export default function MapDetail() {
         )}
       </div>
       {/* 同じフォルダの他マップへの切り替え．フォルダに入っていないマップでは出さない． */}
-      {siblingMaps.length > 0 && (
-        <aside className="w-48 shrink-0 overflow-auto border-l border-slate-200 p-3">
-          <p className="text-xs font-bold text-slate-400">同じフォルダのマップ</p>
-          <ul className="mt-2 space-y-1">
-            {siblingMaps.map((sibling) => (
-              <li key={sibling.id}>
-                <Link
-                  to={`/maps/${sibling.id}`}
-                  className={`block truncate rounded px-2 py-1.5 text-sm ${sibling.id === map.id
-                    ? "bg-slate-800 text-white"
-                    : "text-slate-700 hover:bg-slate-100"
-                    }`}
-                >
-                  {sibling.title}
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </aside>
-      )}
+      {/* 他人の非公開マップを除外したフィルタリング処理 */}
+      {(() => {
+        const visibleSiblingMaps = siblingMaps.filter(
+          (sibling) => sibling.is_public || sibling.user_id === currentUser?.id
+        );
+
+        if (visibleSiblingMaps.length === 0) return null;
+
+        return (
+          <aside className="w-48 shrink-0 overflow-auto border-l border-slate-200 p-3">
+            <p className="text-xs font-bold text-slate-400">同じフォルダのマップ</p>
+            <ul className="mt-2 space-y-1">
+              {visibleSiblingMaps.map((sibling) => {
+                const isActive = sibling.id === map.id;
+
+                return (
+                  <li key={sibling.id}>
+                    <Link
+                      to={`/maps/${sibling.id}`}
+                      className={`flex items-center justify-between gap-1 rounded px-2 py-1.5 text-sm ${isActive
+                        ? "bg-slate-800 text-white"
+                        : "text-slate-700 hover:bg-slate-100"
+                        }`}
+                    >
+                      <span className="truncate">{sibling.title}</span>
+
+                      {/* 公開/非公開バッジ */}
+                      <span
+                        className={`shrink-0 rounded px-1 py-0.5 text-[10px] font-medium ${isActive
+                          ? sibling.is_public
+                            ? "bg-slate-700 text-slate-200"
+                            : "bg-amber-900/60 text-amber-200"
+                          : sibling.is_public
+                            ? "bg-slate-100 text-slate-600"
+                            : "bg-amber-100 text-amber-800"
+                          }`}
+                      >
+                        {sibling.is_public ? "公開" : "非公開"}
+                      </span>
+                    </Link>
+                  </li>
+                );
+              })}
+            </ul>
+          </aside>
+        );
+      })()}
     </div>
   );
 }
