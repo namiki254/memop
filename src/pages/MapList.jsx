@@ -3,6 +3,7 @@ import { Link, useParams } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import Loading from "../components/Loading";
 import ErrorMessage from "../components/ErrorMessage";
+import MoveMapModal from "../components/MoveMapModal";
 
 //表記揺れを整える関数
 function normalizeSearchText(value) {
@@ -36,6 +37,13 @@ export default function MapList() {
   const [currentUser, setCurrentUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+
+  // マップのフォルダ移動に使う状態
+  const [allFolders, setAllFolders] = useState([]);
+  const [movingMap, setMovingMap] = useState(null);
+  const [destinationFolderId, setDestinationFolderId] = useState("");
+  const [moving, setMoving] = useState(false);
+  const [moveError, setMoveError] = useState("");
 
   const [isCreatingFolder, setIsCreatingFolder] = useState(false);
   const [newFolderName, setNewFolderName] = useState("");
@@ -106,10 +114,22 @@ export default function MapList() {
           if (cancelled) return;
           if (folderError) throw folderError;
 
+
           if (!currentFolder) currentFolder = data;
           crumbs.unshift(data);
           cursor = data.parent_folder_id;
         }
+
+        
+        // 移動先の選択欄に表示する、すべてのフォルダを取得する
+        const { data: foldersForMove, error: foldersForMoveError } =
+          await supabase
+            .from("folders")
+            .select("id, name, parent_folder_id")
+            .order("name");
+
+        if (cancelled) return;
+        if (foldersForMoveError) throw foldersForMoveError;
 
         // トップ階層なら parent_folder_id / folder_id が null のものだけ．
         const { data: folders, error: foldersError } = folderId
@@ -145,6 +165,7 @@ export default function MapList() {
         setFolder(currentFolder);
         setBreadcrumb(crumbs);
         setChildFolders(folders ?? []);
+        setAllFolders(foldersForMove ?? []);
         setMaps(mapsData ?? []);
       } catch (fetchError) {
         if (!cancelled) {
@@ -174,6 +195,94 @@ export default function MapList() {
     setNewFolderName("");
     setFolderError("");
     setIsCreatingFolder(false);
+  }
+
+  // マップの移動画面を開く
+  function startMovingMap(map) {
+    // 画面側でも、現在のユーザーが作成者か確認する
+    if (!currentUser || currentUser.id !== map.user_id) {
+      setMoveError("このマップは移動できません。");
+      return;
+    }
+
+    setMovingMap(map);
+    setDestinationFolderId(map.folder_id ?? "");
+    setMoveError("");
+  }
+
+  // マップの移動をキャンセルする
+  function cancelMovingMap() {
+    if (moving) return;
+
+    setMovingMap(null);
+    setDestinationFolderId("");
+    setMoveError("");
+  }
+
+  // 選択したフォルダへマップを移動する
+  async function handleMoveMap() {
+    if (!movingMap || moving) return;
+
+    const nextFolderId = destinationFolderId || null;
+
+    // 現在と同じ場所が選ばれている場合は更新しない
+    if (nextFolderId === movingMap.folder_id) {
+      setMoveError("現在と同じ場所が選択されています。");
+      return;
+    }
+
+    setMoving(true);
+    setMoveError("");
+
+    try {
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser();
+
+      // 保存直前にも、ログインユーザーが作成者か確認する
+      if (userError || !user || user.id !== movingMap.user_id) {
+        setMoveError("このマップは移動できません。");
+        return;
+      }
+
+      const { data: updatedMap, error: updateError } = await supabase
+        .from("maps")
+        .update({ folder_id: nextFolderId })
+        .eq("id", movingMap.id)
+        .eq("user_id", user.id)
+        .select("id, folder_id")
+        .maybeSingle();
+
+      if (updateError) {
+        console.error("マップの移動に失敗", updateError);
+        setMoveError(`移動に失敗しました。${updateError.message}`);
+        return;
+      }
+
+      // 更新対象が0件だった場合も失敗として扱う
+      if (!updatedMap) {
+        setMoveError("マップを移動できませんでした。");
+        return;
+      }
+
+      // 移動したマップを、現在表示している一覧から取り除く
+      setMaps((current) =>
+        current.filter((map) => map.id !== movingMap.id),
+      );
+
+      setMovingMap(null);
+      setDestinationFolderId("");
+    } catch (unexpectedError) {
+      console.error("マップの移動中に予期しないエラー", unexpectedError);
+      setMoveError(
+        `予期しないエラーが発生しました。${
+          unexpectedError?.message ?? unexpectedError
+        }`,
+      );
+    } finally {
+      setMoving(false);
+    }
   }
 
   /** 今のフォルダの中に，新しいフォルダを作る */
@@ -267,7 +376,21 @@ export default function MapList() {
   }
 
   return (
+
     <div className="h-full overflow-auto bg-[#fffaf5] p-6">
+      <MoveMapModal
+        map={movingMap}
+        folders={allFolders}
+        destinationFolderId={destinationFolderId}
+        onDestinationChange={(folderId) => {
+          setDestinationFolderId(folderId);
+          setMoveError("");
+        }}
+        onMove={handleMoveMap}
+        onCancel={cancelMovingMap}
+        moving={moving}
+        error={moveError}
+      />
       {/* パンくず．常にホームから始まる． */}
       <p className="text-sm text-slate-500">
         <Link to="/" className="hover:underline">
@@ -410,53 +533,54 @@ export default function MapList() {
           ))}
 
           {visibleMaps.map((map) => (
-            <Link
+            <div
               key={map.id}
-              to={`/maps/${map.id}`}
-              className="
-                group
-                overflow-hidden
-                rounded-2xl
-                border border-rose-100
-                bg-white
-                shadow-sm
-                transition
-                hover:-translate-y-1
-                hover:shadow-md
-              "
+              className="group overflow-hidden rounded-2xl border border-rose-100 bg-white shadow-sm transition hover:-translate-y-1 hover:shadow-md"
             >
-              {map.image_url ? (
-                <div className="overflow-hidden bg-rose-50">
-                  <img
-                    src={map.image_url}
-                    alt={map.title}
-                    className="
-                      h-40 w-full
-                      object-cover
-                      transition
-                      duration-300
-                      group-hover:scale-[1.03]
-                    "
-                  />
+              <Link
+                to={`/maps/${map.id}`}
+                className="block"
+              >
+                {map.image_url ? (
+                  <div className="overflow-hidden bg-rose-50">
+                    <img
+                      src={map.image_url}
+                      alt={map.title}
+                      className="h-40 w-full object-cover transition duration-300 group-hover:scale-[1.03]"
+                    />
+                  </div>
+                ) : (
+                  <div className="grid h-40 w-full place-items-center bg-rose-50 text-3xl">
+                    🗺️
+                  </div>
+                )}
+
+                <div className="p-4">
+                  <h3 className="font-bold text-[#3f3a3a]">
+                    {map.title}
+                  </h3>
+
+                  {map.description && (
+                    <p className="mt-1 line-clamp-2 text-sm text-[#817878]">
+                      {map.description}
+                    </p>
+                  )}
                 </div>
-              ) : (
-                <div className="grid h-40 w-full place-items-center bg-rose-50 text-3xl">
-                  🗺️
+              </Link>
+
+              {/* マップ作成者にだけ移動ボタンを表示する */}
+              {currentUser?.id === map.user_id && (
+                <div className="border-t border-rose-100 px-4 py-2">
+                  <button
+                    type="button"
+                    onClick={() => startMovingMap(map)}
+                    className="text-sm font-medium text-rose-600 hover:underline"
+                  >
+                    移動
+                  </button>
                 </div>
               )}
-
-              <div className="p-4">
-                <h3 className="font-bold text-[#3f3a3a]">
-                  {map.title}
-                </h3>
-
-                {map.description && (
-                  <p className="mt-1 line-clamp-2 text-sm text-[#817878]">
-                    {map.description}
-                  </p>
-                )}
-              </div>
-            </Link>
+            </div>
           ))}
         </div>
       )}
