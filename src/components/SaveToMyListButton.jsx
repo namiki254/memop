@@ -157,7 +157,7 @@ export default function SaveToMyListButton({
     }
 
     return (
-        <div className="flex flex-col items-start gap-2">
+        <div className="relative flex items-center">
             <button
                 type="button"
                 onClick={handleSave}
@@ -174,7 +174,7 @@ export default function SaveToMyListButton({
             {saveError && (
                 <p
                     role="alert"
-                    className="rounded bg-red-50 px-3 py-2 text-sm text-red-700"
+                    className="absolute right-0 top-full z-20 mt-2 w-72 max-w-[80vw] rounded bg-red-50 px-3 py-2 text-sm text-red-700 shadow-md"
                 >
                     {saveError}
                 </p>

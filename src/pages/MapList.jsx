@@ -7,6 +7,7 @@ import ErrorMessage from "../components/ErrorMessage";
 import { normalizeSearchText } from "../lib/searchText";
 
 import MoveMapModal from "../components/MoveMapModal";
+import SaveToMyListButton from "../components/SaveToMyListButton";
 
 /**
  * マップ一覧ページ．
@@ -125,7 +126,7 @@ export default function MapList() {
 
   const isEmpty = visibleFolders.length === 0 && visibleMaps.length === 0;
 
-// 現在ログインしているユーザーを取得する
+  // 現在ログインしているユーザーを取得する
   useEffect(() => {
     async function loadCurrentUser() {
       const {
@@ -150,7 +151,7 @@ export default function MapList() {
       subscription.unsubscribe();
     };
   }, []);
-  
+
   useEffect(() => {
     let cancelled = false;
 
@@ -173,7 +174,7 @@ export default function MapList() {
           setBreadcrumb([]);
           setChildFolders([]);
           setMaps([]);
-        return;
+          return;
         }
 
         // 今のフォルダ自身と，そこから親をたどってパンくずを組み立てる．
@@ -221,7 +222,7 @@ export default function MapList() {
           setFolderNotFound(true);
           return;
         }
-        
+
         // 移動先の選択欄に表示する、すべてのフォルダを取得する
         const { data: foldersForMove, error: foldersForMoveError } =
           await supabase
@@ -244,8 +245,8 @@ export default function MapList() {
         } else {
           // トップでは、自分が作ったフォルダだけ取得
           foldersQuery = foldersQuery
-          .is("parent_folder_id", null)
-          .eq("user_id", currentUser.id);
+            .is("parent_folder_id", null)
+            .eq("user_id", currentUser.id);
         }
 
         const { data: folders, error: foldersError } = await foldersQuery;
@@ -280,8 +281,8 @@ export default function MapList() {
 
             savedFolders = data ?? [];
           }
-      }
-        
+        }
+
         let mapsQuery = supabase
           .from("maps")
           .select("*, map_favorites(user_id)")
@@ -344,8 +345,8 @@ export default function MapList() {
           ...f,
           is_favorited: currentUser
             ? (f.folder_favorites ?? []).some(
-                (fav) => fav.user_id === currentUser.id,
-              )
+              (fav) => fav.user_id === currentUser.id,
+            )
             : false,
         }));
 
@@ -362,8 +363,8 @@ export default function MapList() {
           ...m,
           is_favorited: currentUser
             ? (m.map_favorites ?? []).some(
-                (fav) => fav.user_id === currentUser.id,
-              )
+              (fav) => fav.user_id === currentUser.id,
+            )
             : false,
         }));
 
@@ -477,8 +478,7 @@ export default function MapList() {
     } catch (unexpectedError) {
       console.error("マップの移動中に予期しないエラー", unexpectedError);
       setMoveError(
-        `予期しないエラーが発生しました。${
-          unexpectedError?.message ?? unexpectedError
+        `予期しないエラーが発生しました。${unexpectedError?.message ?? unexpectedError
         }`,
       );
     } finally {
@@ -721,17 +721,30 @@ export default function MapList() {
         ))}
       </p>
 
-      <div className="mt-1 flex items-center justify-between">
+      <div className="mt-1 flex items-center justify-between gap-3">
         <h2 className="text-2xl font-bold text-slate-800">
           {folder ? folder.name : "マップ一覧"}
         </h2>
-        <button
-          type="button"
-          onClick={startCreatingFolder}
-          className="rounded border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
-        >
-          ＋ 新しいフォルダ
-        </button>
+
+        <div className="flex items-start gap-2">
+          {/* フォルダ画面でだけ保存ボタンを表示する */}
+          {authChecked && folder && (
+            <SaveToMyListButton
+              itemType="folder"
+              itemId={folder.id}
+              ownerId={folder.user_id}
+              currentUser={currentUser}
+            />
+          )}
+
+          <button
+            type="button"
+            onClick={startCreatingFolder}
+            className="rounded border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
+          >
+            ＋ 新しいフォルダ
+          </button>
+        </div>
       </div>
 
       {isCreatingFolder && (
@@ -799,11 +812,10 @@ export default function MapList() {
         <button
           type="button"
           onClick={() => setShowOnlyFavorites((prev) => !prev)}
-          className={`flex items-center gap-1 rounded-full border px-3 py-1.5 text-sm transition ${
-            showOnlyFavorites
+          className={`flex items-center gap-1 rounded-full border px-3 py-1.5 text-sm transition ${showOnlyFavorites
               ? "border-rose-300 bg-rose-50 font-bold text-rose-600"
               : "border-rose-100 bg-white text-[#817878] hover:bg-rose-50"
-          }`}
+            }`}
         >
           <span className={showOnlyFavorites ? "text-rose-500" : "text-slate-300"}>
             ♥
@@ -815,33 +827,30 @@ export default function MapList() {
           <button
             type="button"
             onClick={() => setDisplayType("all")}
-            className={`px-3 py-1.5 transition ${
-              displayType === "all"
+            className={`px-3 py-1.5 transition ${displayType === "all"
                 ? "bg-rose-400 font-bold text-white"
                 : "text-[#817878] hover:bg-rose-50"
-            }`}
+              }`}
           >
             すべて
           </button>
           <button
             type="button"
             onClick={() => setDisplayType("maps")}
-            className={`border-l border-rose-100 px-3 py-1.5 transition ${
-              displayType === "maps"
+            className={`border-l border-rose-100 px-3 py-1.5 transition ${displayType === "maps"
                 ? "bg-rose-400 font-bold text-white"
                 : "text-[#817878] hover:bg-rose-50"
-            }`}
+              }`}
           >
             マップのみ
           </button>
           <button
             type="button"
             onClick={() => setDisplayType("folders")}
-            className={`border-l border-rose-100 px-3 py-1.5 transition ${
-              displayType === "folders"
+            className={`border-l border-rose-100 px-3 py-1.5 transition ${displayType === "folders"
                 ? "bg-rose-400 font-bold text-white"
                 : "text-[#817878] hover:bg-rose-50"
-            }`}
+              }`}
           >
             フォルダのみ
           </button>
@@ -878,7 +887,7 @@ export default function MapList() {
             : "ここには何もありません．"}
         </p>
       ) : (
-        <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="mt-6 grid auto-rows-fr grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {visibleFolders.map((f) => (
             <div
               key={f.id}
@@ -916,9 +925,8 @@ export default function MapList() {
                 title={f.is_favorited ? "お気に入り解除" : "お気に入り登録"}
               >
                 <span
-                  className={`text-xl ${
-                    f.is_favorited ? "text-rose-500" : "text-slate-300"
-                  }`}
+                  className={`text-xl ${f.is_favorited ? "text-rose-500" : "text-slate-300"
+                    }`}
                 >
                   ♥
                 </span>
@@ -928,14 +936,14 @@ export default function MapList() {
               {(f.user_id === null
                 ? Boolean(currentUser)
                 : currentUser?.id === f.user_id) && (
-                <button
-                  type="button"
-                  onClick={() => handleDeleteFolder(f)}
-                  className="text-xs text-red-600 hover:underline"
-                >
-                  削除
-                </button>
-              )}
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteFolder(f)}
+                    className="text-xs text-red-600 hover:underline"
+                  >
+                    削除
+                  </button>
+                )}
             </div>
           ))}
 
@@ -951,9 +959,8 @@ export default function MapList() {
                 title={map.is_favorited ? "お気に入り解除" : "お気に入り登録"}
               >
                 <span
-                  className={`text-2xl drop-shadow ${
-                    map.is_favorited ? "text-rose-500" : "text-white/80"
-                  }`}
+                  className={`text-2xl drop-shadow ${map.is_favorited ? "text-rose-500" : "text-white/80"
+                    }`}
                 >
                   ♥
                 </span>
