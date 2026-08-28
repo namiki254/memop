@@ -162,9 +162,19 @@ export default function MapList() {
     setFolderError("");
 
     try {
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser();
+
+      if (userError || !user) {
+        setFolderError("フォルダを作成するにはログインしてください．");
+        return;
+      }
+
       const { data: created, error: insertError } = await supabase
         .from("folders")
-        .insert({ name, parent_folder_id: folderId ?? null })
+        .insert({ name, parent_folder_id: folderId ?? null, user_id: user.id })
         .select()
         .single();
 
