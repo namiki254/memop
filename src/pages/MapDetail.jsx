@@ -7,6 +7,7 @@ import { MapView } from "../components/MapView";
 import { PinPanel } from "../components/PinPanel";
 import { PIN_TYPES } from "../lib/pinTypes";
 import { normalizeSearchText } from "../lib/searchText";
+import SaveToMyListButton from "../components/SaveToMyListButton";
 
 /**
  * マップ詳細ページ．
@@ -884,6 +885,12 @@ export default function MapDetail() {
                 </div>
 
                 <div className="flex shrink-0 items-center gap-2">
+                  <SaveToMyListButton
+                    itemType="map"
+                    itemId={map.id}
+                    ownerId={map.user_id}
+                    currentUser={currentUser}
+                  />
                   {/* コピー成功時に左側にメッセージを表示 */}
                   {copied && (
                     <span className="text-xs font-medium text-emerald-600">

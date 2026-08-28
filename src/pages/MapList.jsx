@@ -7,6 +7,7 @@ import ErrorMessage from "../components/ErrorMessage";
 import { normalizeSearchText } from "../lib/searchText";
 
 import MoveMapModal from "../components/MoveMapModal";
+import SaveToMyListButton from "../components/SaveToMyListButton";
 
 /**
  * マップ一覧ページ．
@@ -818,97 +819,107 @@ const [copied, setCopied] = useState(false);
       </p>
 
       <div className="mt-1 flex items-center justify-between">
-{folder && isEditingFolder ? (
-  <input
-    type="text"
-    value={editingFolderName}
-    onChange={(e) => setEditingFolderName(e.target.value)}
-    maxLength={100}
-    className="rounded border border-slate-300 px-3 py-1.5 text-2xl font-bold text-slate-800"
-  />
-) : (
-  <h2 className="text-2xl font-bold text-slate-800">
-    {folder ? folder.name : "マップ一覧"}
-  </h2>
-)}
+        {folder && isEditingFolder ? (
+          <input
+            type="text"
+            value={editingFolderName}
+            onChange={(e) => setEditingFolderName(e.target.value)}
+            maxLength={100}
+            className="rounded border border-slate-300 px-3 py-1.5 text-2xl font-bold text-slate-800"
+          />
+        ) : (
+          <h2 className="text-2xl font-bold text-slate-800">
+            {folder ? folder.name : "マップ一覧"}
+          </h2>
+        )}
 
-{/* 右側のボタンエリア */}
-<div className="flex items-center gap-2">
-  {/* フォルダ内だけURLコピーボタンを表示 */}
-  {folderId && (
-    <div className="flex items-center gap-2">
-      {copied && (
-        <span className="text-sm font-medium text-emerald-600">
-          コピーしました
-        </span>
-      )}
+        {/* 右側のボタンエリア */}
+        <div className="flex items-center gap-2">
+          {/* フォルダ画面でだけ保存ボタンを表示する（作成者本人には内部で非表示になる） */}
+          {authChecked && folder && (
+            <SaveToMyListButton
+              itemType="folder"
+              itemId={folder.id}
+              ownerId={folder.user_id}
+              currentUser={currentUser}
+            />
+          )}
 
-      <button
-        type="button"
-        onClick={copyFolderUrl}
-        className="rounded-md bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-700 hover:bg-slate-200"
-      >
-        フォルダのURLをコピー
-      </button>
-    </div>
-  )}
+          {/* フォルダ内だけURLコピーボタンを表示 */}
+          {folderId && (
+            <div className="flex items-center gap-2">
+              {copied && (
+                <span className="text-sm font-medium text-emerald-600">
+                  コピーしました
+                </span>
+              )}
 
-  {/* 作成者だけ編集・削除できる */}
-  {folder && currentUser?.id === folder.user_id && (
-    <>
-      {isEditingFolder ? (
-        <>
+              <button
+                type="button"
+                onClick={copyFolderUrl}
+                className="rounded-md bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-700 hover:bg-slate-200"
+              >
+                フォルダのURLをコピー
+              </button>
+            </div>
+          )}
+
+          {/* 作成者だけ編集・削除できる */}
+          {folder && currentUser?.id === folder.user_id && (
+            <>
+              {isEditingFolder ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setIsEditingFolder(false)}
+                    disabled={updatingFolder}
+                    className="rounded border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                  >
+                    キャンセル
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleUpdateFolder}
+                    disabled={updatingFolder || editingFolderName.trim() === ""}
+                    className="rounded bg-slate-800 px-3 py-1.5 text-sm text-white disabled:bg-slate-300"
+                  >
+                    {updatingFolder ? "保存中..." : "保存"}
+                  </button>
+                </>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditingFolderName(folder.name);
+                    setIsEditingFolder(true);
+                  }}
+                  className="rounded border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
+                >
+                  編集
+                </button>
+              )}
+
+              <button
+                type="button"
+                onClick={() => handleDeleteFolder(folder)}
+                disabled={updatingFolder}
+                className="rounded border border-red-300 px-3 py-1.5 text-sm text-red-600 hover:bg-red-50 disabled:opacity-50"
+              >
+                削除
+              </button>
+            </>
+          )}
+
           <button
             type="button"
-            onClick={() => setIsEditingFolder(false)}
-            disabled={updatingFolder}
-            className="rounded border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+            onClick={startCreatingFolder}
+            className="rounded border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
           >
-            キャンセル
+            ＋ 新しいフォルダ
           </button>
-
-          <button
-            type="button"
-            onClick={handleUpdateFolder}
-            disabled={updatingFolder || editingFolderName.trim() === ""}
-            className="rounded bg-slate-800 px-3 py-1.5 text-sm text-white disabled:bg-slate-300"
-          >
-            {updatingFolder ? "保存中..." : "保存"}
-          </button>
-        </>
-      ) : (
-        <button
-          type="button"
-          onClick={() => {
-            setEditingFolderName(folder.name);
-            setIsEditingFolder(true);
-          }}
-          className="rounded border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
-        >
-          編集
-        </button>
-      )}
-
-      <button
-        type="button"
-        onClick={() => handleDeleteFolder(folder)}
-        disabled={updatingFolder}
-        className="rounded border border-red-300 px-3 py-1.5 text-sm text-red-600 hover:bg-red-50 disabled:opacity-50"
-      >
-        削除
-      </button>
-    </>
-  )}
-
-  <button
-    type="button"
-    onClick={startCreatingFolder}
-    className="rounded border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
-  >
-    ＋ 新しいフォルダ
-  </button>
-</div>
-</div>
+        </div>
+      </div>
 
 
       {isCreatingFolder && (
@@ -1051,7 +1062,7 @@ const [copied, setCopied] = useState(false);
             : "ここには何もありません．"}
         </p>
       ) : (
-        <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="mt-6 grid auto-rows-fr grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {visibleFolders.map((f) => (
             <div
               key={f.id}
