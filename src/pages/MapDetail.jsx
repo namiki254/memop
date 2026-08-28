@@ -431,7 +431,10 @@ export default function MapDetail() {
   async function handleUpdateMap(event) {
     event.preventDefault();
     if (savingMap) return;
-
+    if (!isMapOwner) {
+      setMapError("マップを編集できるのは作成者だけです．");
+      return;
+    }
     const trimmedTitle = mapTitle.trim();
     if (!trimmedTitle) return;
 
@@ -740,12 +743,15 @@ export default function MapDetail() {
                 >
                   {copied ? "コピーしました！" : "このマップのURLをコピー"}
                 </button>
-                <button
-                  onClick={startEditingMap}
-                  className="rounded-md border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
-                >
-                  編集
-                </button>
+                
+                {isMapOwner && (
+                  <button
+                    onClick={startEditingMap}
+                    className="rounded-md border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                  >
+                    編集
+                  </button>
+                )}
                 {/* マップの削除は作成者だけができる */}
                 {isMapOwner && (
                   <button
