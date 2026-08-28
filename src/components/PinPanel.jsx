@@ -75,6 +75,11 @@ export function PinPanel({
   // 別の場所をクリックしたら空の状態に戻るようにする．
   const key = pin?.id ?? `${pin?.x}-${pin?.y}`;
 
+  const [panelCollapsed, setPanelCollapsed] = useState(false);
+
+  useEffect(() => {
+    setPanelCollapsed(false);
+  }, [key]);
   // ピンを選び直したときに入力欄に既存タイトルやメモが入るように変更
   //
   // mapOptions を依存に入れていないのは意図的．親（MapDetail.jsx）側で
@@ -191,73 +196,97 @@ export function PinPanel({
         sm:border
       "
     >
-      {/* フォームを表示する条件にisEditingも追加 */}
-      {isNew || isEditing ? ( // ★ isEditing も追加
-        <form onSubmit={handleSubmit}>
-          <div className="flex items-center justify-between">
-            {/* 見出しを切り替える */}
-            <p className="font-bold text-slate-800">
-              {isNew ? "ここにピンを立てる" : "ピンを編集"}
-            </p>
-            <button
-              type="button"
-              // キャンセル時の動きを切り替える
-              onClick={isNew ? onClose : cancelEditing}
-              disabled={saving}
-              className="text-sm text-slate-500 underline disabled:opacity-50"
-            >
-              キャンセル
-            </button>
-          </div>
+      <button
+        type="button"
+        onClick={() => setPanelCollapsed((current) => !current)}
+        aria-expanded={!panelCollapsed}
+        aria-controls="pin-panel-content"
+        className="flex w-full items-center justify-between rounded-lg bg-rose-50 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-rose-100"
+      >
+        <span>
+          {panelCollapsed
+            ? isNew
+              ? "ピンを追加中"
+              : isEditing
+                ? "ピンを編集中"
+                : "ピンを表示中"
+            : "マップを見るためにしまう"}
+        </span>
 
-          {/* ピンそのものの種類（メモ／ボタン）．#38の見た目の種類とは別軸． */}
-          <div className="mt-3 flex gap-1.5">
-            <button
-              type="button"
-              onClick={() => setKind("pin")}
-              disabled={saving}
-              aria-pressed={kind === "pin"}
-              className={`rounded-full border px-3 py-1.5 text-xs font-bold transition disabled:opacity-50 ${
-                kind === "pin"
+        <span aria-hidden="true">
+          {panelCollapsed ? "▲ 開く" : "▼ しまう"}
+        </span>
+      </button>
+
+      <div
+        id="pin-panel-content"
+        className={panelCollapsed ? "hidden" : "mt-3"}
+      >
+        {/* フォームを表示する条件にisEditingも追加 */}
+        {isNew || isEditing ? ( // ★ isEditing も追加
+          <form onSubmit={handleSubmit}>
+            <div className="flex items-center justify-between">
+              {/* 見出しを切り替える */}
+              <p className="font-bold text-slate-800">
+                {isNew ? "ここにピンを立てる" : "ピンを編集"}
+              </p>
+              <button
+                type="button"
+                // キャンセル時の動きを切り替える
+                onClick={isNew ? onClose : cancelEditing}
+                disabled={saving}
+                className="text-sm text-slate-500 underline disabled:opacity-50"
+              >
+                キャンセル
+              </button>
+            </div>
+
+            {/* ピンそのものの種類（メモ／ボタン）．#38の見た目の種類とは別軸． */}
+            <div className="mt-3 flex gap-1.5">
+              <button
+                type="button"
+                onClick={() => setKind("pin")}
+                disabled={saving}
+                aria-pressed={kind === "pin"}
+                className={`rounded-full border px-3 py-1.5 text-xs font-bold transition disabled:opacity-50 ${kind === "pin"
                   ? "border-[#F47281] bg-[#FFF0F1] text-[#C95765]"
                   : "border-rose-100 bg-white text-[#817878] hover:bg-rose-50"
-              }`}
-            >
-              📍 メモ
-            </button>
-            <button
-              type="button"
-              onClick={() => setKind("button")}
-              disabled={saving}
-              aria-pressed={kind === "button"}
-              className={`rounded-full border px-3 py-1.5 text-xs font-bold transition disabled:opacity-50 ${
-                kind === "button"
+                  }`}
+              >
+                📍 メモ
+              </button>
+              <button
+                type="button"
+                onClick={() => setKind("button")}
+                disabled={saving}
+                aria-pressed={kind === "button"}
+                className={`rounded-full border px-3 py-1.5 text-xs font-bold transition disabled:opacity-50 ${kind === "button"
                   ? "border-[#7DCDB5] bg-[#EDF9F5] text-[#3E8D77]"
                   : "border-rose-100 bg-white text-[#817878] hover:bg-rose-50"
-              }`}
-            >
-              🔗 マップ移動
-            </button>
-          </div>
+                  }`}
+              >
+                🔗 マップ移動
+              </button>
+            </div>
 
-          <input
-            type="text"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            onKeyDown={(e) => {
-              // 日本語の変換を確定する Enter で送信されないようにする
-              if (e.key === "Enter" && e.nativeEvent.isComposing) {
-                e.preventDefault();
+            <input
+              type="text"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              onKeyDown={(e) => {
+                // 日本語の変換を確定する Enter で送信されないようにする
+                if (e.key === "Enter" && e.nativeEvent.isComposing) {
+                  e.preventDefault();
+                }
+              }}
+              disabled={saving}
+              maxLength={100}
+              placeholder={
+                kind === "button"
+                  ? "ボタンの名前（例：ララポートへ）"
+                  : "タイトル（例：おすすめのカフェ）"
               }
-            }}
-            disabled={saving}
-            maxLength={100}
-            placeholder={
-              kind === "button"
-                ? "ボタンの名前（例：ララポートへ）"
-                : "タイトル（例：おすすめのカフェ）"
-            }
-            className="mt-2
+              className="mt-2
             w-full
             border
             rounded-xl
@@ -271,190 +300,189 @@ export function PinPanel({
             py-2
             text-sm
             disabled:bg-slate-100"
-          />
+            />
 
-          {kind === "button" ? (
-            mapOptions.length === 0 ? (
-              <p className="mt-2 text-xs text-slate-500">
-                移動先に選べるマップがありません．
-              </p>
-            ) : (
-              <select
-                value={linkMapId}
-                onChange={(e) => setLinkMapId(e.target.value)}
-                disabled={saving}
-                className="mt-2 w-full rounded-xl border border-rose-100 bg-rose-50/30 px-3 py-2 text-sm outline-none focus:border-rose-300 focus:ring-4 focus:ring-rose-100 disabled:bg-stone-100"
-              >
-                {mapOptions.map((option) => (
-                  <option key={option.id} value={option.id}>
-                    {option.title}
-                  </option>
-                ))}
-              </select>
-            )
-          ) : (
-            <>
-              <textarea
-                value={content}
-                onChange={(e) => setContent(e.target.value)}
-                disabled={saving}
-                maxLength={500}
-                rows={3}
-                placeholder="メモ（任意）"
-                className="mt-2 w-full rounded-xl border border-rose-100 bg-rose-50/30 px-3 py-2 text-sm outline-none focus:border-rose-300 focus:ring-4 focus:ring-rose-100 disabled:bg-stone-100"
-              />
-
-              <div className="mt-2 flex flex-wrap gap-1.5">
-                {PIN_TYPES.map((type) => (
-                  <button
-                    key={type.value}
-                    type="button"
-                    onClick={() => setPinType(type.value)}
-                    disabled={saving}
-                    aria-pressed={pinType === type.value}
-                    className={`rounded-full border px-2.5 py-1 text-xs font-medium transition disabled:opacity-50 ${
-                      type.value === pinType
-                        ? "border-[#F47281] bg-[#FFF0F1] text-[#C95765]"
-                        : "border-rose-100 bg-white text-[#817878] hover:bg-rose-50"
-                    }`}
-                  >
-                    {type.emoji} {type.label}
-                  </button>
-                ))}
-                {/* 自由入力を選択するボタン */}
-                <button
-                  type="button"
-                  onClick={() => setPinType("custom")}
+            {kind === "button" ? (
+              mapOptions.length === 0 ? (
+                <p className="mt-2 text-xs text-slate-500">
+                  移動先に選べるマップがありません．
+                </p>
+              ) : (
+                <select
+                  value={linkMapId}
+                  onChange={(e) => setLinkMapId(e.target.value)}
                   disabled={saving}
-                  aria-pressed={pinType === "custom"}
-                  className={`rounded-full border px-2.5 py-1 text-xs disabled:opacity-50 ${
-                    pinType === "custom"
-                    ? "border-slate-800 bg-slate-800 text-white"
-                    : "border-slate-300 text-slate-600"
-                    }`}
+                  className="mt-2 w-full rounded-xl border border-rose-100 bg-rose-50/30 px-3 py-2 text-sm outline-none focus:border-rose-300 focus:ring-4 focus:ring-rose-100 disabled:bg-stone-100"
                 >
-                  ✏️ 自由入力
-                </button>
-              </div>
-              {/* 自由入力を選んだときだけ入力欄を表示する */}
-              {pinType === "custom" && (
-                <input
-                  type="text"
-                  value={customPinType}
-                  onChange={(e) => {
-                    // 日本語入力（IME）の変換中に強制的に値を書き換えると，
-                    // 変換候補ウィンドウが崩れることがあるため，変換確定後にだけ切り詰める．
-                    if (e.nativeEvent.isComposing) {
-                      setCustomPinType(e.target.value);
-                      return;
-                    }
-                    setCustomPinType(truncateToGraphemes(e.target.value, 4));
-                  }}
-                  onCompositionEnd={(e) =>
-                    setCustomPinType(truncateToGraphemes(e.target.value, 4))
-                  }
+                  {mapOptions.map((option) => (
+                    <option key={option.id} value={option.id}>
+                      {option.title}
+                    </option>
+                  ))}
+                </select>
+              )
+            ) : (
+              <>
+                <textarea
+                  value={content}
+                  onChange={(e) => setContent(e.target.value)}
                   disabled={saving}
-                  placeholder="例：🐱 / 猫"
+                  maxLength={500}
+                  rows={3}
+                  placeholder="メモ（任意）"
                   className="mt-2 w-full rounded-xl border border-rose-100 bg-rose-50/30 px-3 py-2 text-sm outline-none focus:border-rose-300 focus:ring-4 focus:ring-rose-100 disabled:bg-stone-100"
                 />
-              )}
-            </>
-          )}
 
-          {error && (
-            <p className="mt-2 rounded bg-red-50 p-2 text-sm text-red-700">
-              {error}
-            </p>
-          )}
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {PIN_TYPES.map((type) => (
+                    <button
+                      key={type.value}
+                      type="button"
+                      onClick={() => setPinType(type.value)}
+                      disabled={saving}
+                      aria-pressed={pinType === type.value}
+                      className={`rounded-full border px-2.5 py-1 text-xs font-medium transition disabled:opacity-50 ${type.value === pinType
+                        ? "border-[#F47281] bg-[#FFF0F1] text-[#C95765]"
+                        : "border-rose-100 bg-white text-[#817878] hover:bg-rose-50"
+                        }`}
+                    >
+                      {type.emoji} {type.label}
+                    </button>
+                  ))}
+                  {/* 自由入力を選択するボタン */}
+                  <button
+                    type="button"
+                    onClick={() => setPinType("custom")}
+                    disabled={saving}
+                    aria-pressed={pinType === "custom"}
+                    className={`rounded-full border px-2.5 py-1 text-xs disabled:opacity-50 ${pinType === "custom"
+                      ? "border-slate-800 bg-slate-800 text-white"
+                      : "border-slate-300 text-slate-600"
+                      }`}
+                  >
+                    ✏️ 自由入力
+                  </button>
+                </div>
+                {/* 自由入力を選んだときだけ入力欄を表示する */}
+                {pinType === "custom" && (
+                  <input
+                    type="text"
+                    value={customPinType}
+                    onChange={(e) => {
+                      // 日本語入力（IME）の変換中に強制的に値を書き換えると，
+                      // 変換候補ウィンドウが崩れることがあるため，変換確定後にだけ切り詰める．
+                      if (e.nativeEvent.isComposing) {
+                        setCustomPinType(e.target.value);
+                        return;
+                      }
+                      setCustomPinType(truncateToGraphemes(e.target.value, 4));
+                    }}
+                    onCompositionEnd={(e) =>
+                      setCustomPinType(truncateToGraphemes(e.target.value, 4))
+                    }
+                    disabled={saving}
+                    placeholder="例：🐱 / 猫"
+                    className="mt-2 w-full rounded-xl border border-rose-100 bg-rose-50/30 px-3 py-2 text-sm outline-none focus:border-rose-300 focus:ring-4 focus:ring-rose-100 disabled:bg-stone-100"
+                  />
+                )}
+              </>
+            )}
 
-          <button
-            type="submit"
-            disabled={
-              saving ||
-              title.trim() === "" ||
-              (kind === "button" && !linkMapId) ||
-              (kind !== "button" &&
-                pinType === "custom" &&
-                customPinType.trim() === "")
-            }
-            className="mt-4 w-full rounded-full bg-[#F47281] px-4 py-2.5 text-sm font-bold text-white hover:bg-[#E95F70] disabled:bg-stone-300"
-          >
-            {/* {saving ? "保存中..." : "このピンを保存"} */}
-            {/* 保存ボタンのテキストを切り替える */}
-            {saving ? "保存中..." : isNew ? "このピンを保存" : "変更を保存"}
-          </button>
+            {error && (
+              <p className="mt-2 rounded bg-red-50 p-2 text-sm text-red-700">
+                {error}
+              </p>
+            )}
 
-          {!saving && title.trim() === "" && (
-            <p className="mt-2 text-xs text-slate-500">
-              タイトルを入れると保存できます．
-            </p>
-          )}
-          {!saving && title.trim() !== "" && kind === "button" && !linkMapId && (
-            <p className="mt-2 text-xs text-slate-500">
-              移動先のマップを選ぶと保存できます．
-            </p>
-          )}
-        </form>
-      ) : (
-        <div>
-          <div className="flex items-start justify-between gap-3">
-            <p className="font-bold break-words text-[#3F3A3A]">
-              {pin.kind === "button" ? "🔗" : getPinEmoji(pin.pin_type)}{" "}
-              {pin.title}
-            </p>
             <button
-              type="button"
-              onClick={onClose}
-              className="shrink-0 text-sm text-slate-500 underline"
+              type="submit"
+              disabled={
+                saving ||
+                title.trim() === "" ||
+                (kind === "button" && !linkMapId) ||
+                (kind !== "button" &&
+                  pinType === "custom" &&
+                  customPinType.trim() === "")
+              }
+              className="mt-4 w-full rounded-full bg-[#F47281] px-4 py-2.5 text-sm font-bold text-white hover:bg-[#E95F70] disabled:bg-stone-300"
             >
-              閉じる
+              {/* {saving ? "保存中..." : "このピンを保存"} */}
+              {/* 保存ボタンのテキストを切り替える */}
+              {saving ? "保存中..." : isNew ? "このピンを保存" : "変更を保存"}
             </button>
-          </div>
 
-          {/* 通常はここに来ない．ボタンは押した瞬間に移動するので，
-              このビューが出るのは移動先マップが消えて壊れているときだけ． */}
-          {pin.kind === "button" ? (
-            <p className="mt-2 text-sm text-red-600">
-              移動先のマップが見つかりません．編集して選び直してください．
-            </p>
-          ) : pin.content ? (
-            <p className="mt-2 text-sm break-words whitespace-pre-wrap text-slate-600">
-              {/* {pin.content} */}
-              {/* urlを識別、リンクを付与する関数で返す */}
-              {renderTextWithLinks(pin.content)}
-            </p>
-          ) : (
-            <p className="mt-2 text-sm text-slate-400">メモはありません．</p>
-          )}
-          {/* エラーメッセージの表示 */}
-          {error && (
-            <p className="mt-2 rounded bg-red-50 p-2 text-sm text-red-700">
-              {error}
-            </p>
-          )}
-          {/* 編集、削除ボタン */}
-          {isOwner && (
-            <div className="mt-4 flex justify-between border-t border-slate-100 pt-3">
+            {!saving && title.trim() === "" && (
+              <p className="mt-2 text-xs text-slate-500">
+                タイトルを入れると保存できます．
+              </p>
+            )}
+            {!saving && title.trim() !== "" && kind === "button" && !linkMapId && (
+              <p className="mt-2 text-xs text-slate-500">
+                移動先のマップを選ぶと保存できます．
+              </p>
+            )}
+          </form>
+        ) : (
+          <div>
+            <div className="flex items-start justify-between gap-3">
+              <p className="font-bold break-words text-[#3F3A3A]">
+                {pin.kind === "button" ? "🔗" : getPinEmoji(pin.pin_type)}{" "}
+                {pin.title}
+              </p>
               <button
                 type="button"
-                onClick={onEditStart}
-                disabled={saving}
-                className="rounded border border-slate-300 px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                onClick={onClose}
+                className="shrink-0 text-sm text-slate-500 underline"
               >
-                編集
-              </button>
-              <button
-                type="button"
-                onClick={onDelete}
-                disabled={saving}
-                className="rounded border border-red-200 px-3 py-1.5 text-xs text-[#C95765] hover:bg-red-50 disabled:opacity-50"
-              >
-                削除
+                閉じる
               </button>
             </div>
-          )}
-        </div>
-      )}
+
+            {/* 通常はここに来ない．ボタンは押した瞬間に移動するので，
+              このビューが出るのは移動先マップが消えて壊れているときだけ． */}
+            {pin.kind === "button" ? (
+              <p className="mt-2 text-sm text-red-600">
+                移動先のマップが見つかりません．編集して選び直してください．
+              </p>
+            ) : pin.content ? (
+              <p className="mt-2 text-sm break-words whitespace-pre-wrap text-slate-600">
+                {/* {pin.content} */}
+                {/* urlを識別、リンクを付与する関数で返す */}
+                {renderTextWithLinks(pin.content)}
+              </p>
+            ) : (
+              <p className="mt-2 text-sm text-slate-400">メモはありません．</p>
+            )}
+            {/* エラーメッセージの表示 */}
+            {error && (
+              <p className="mt-2 rounded bg-red-50 p-2 text-sm text-red-700">
+                {error}
+              </p>
+            )}
+            {/* 編集、削除ボタン */}
+            {isOwner && (
+              <div className="mt-4 flex justify-between border-t border-slate-100 pt-3">
+                <button
+                  type="button"
+                  onClick={onEditStart}
+                  disabled={saving}
+                  className="rounded border border-slate-300 px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                >
+                  編集
+                </button>
+                <button
+                  type="button"
+                  onClick={onDelete}
+                  disabled={saving}
+                  className="rounded border border-red-200 px-3 py-1.5 text-xs text-[#C95765] hover:bg-red-50 disabled:opacity-50"
+                >
+                  削除
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

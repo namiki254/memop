@@ -37,6 +37,10 @@ export default function AuthButton() {
     try {
       const { error } = await supabase.auth.signInWithOtp({
         email,
+        options: {
+          // ★ 今開いているページのURLをメールのリンク先に指定
+          emailRedirectTo: window.location.href,
+        },
       });
 
       if (error) {
@@ -60,7 +64,8 @@ export default function AuthButton() {
       const { error } = await supabase.auth.signInWithOAuth({
         provider: "github",
         options: {
-          redirectTo: window.location.origin,
+          // origin（ドメインのみ）から href（パスを含む現在の全URL）に変更
+          redirectTo: window.location.href,
         },
       });
 
@@ -69,8 +74,6 @@ export default function AuthButton() {
         console.error(error);
       }
     } finally {
-      // 成功時はここに来る前にページ遷移するのが通常だが，
-      // ポップアップブロック等で遷移しないケースに備えて必ず戻す．
       setSubmitting(false);
     }
   }
@@ -88,15 +91,15 @@ export default function AuthButton() {
   // ログイン済みの場合
   if (session) {
     return (
-      <div className="flex items-center gap-2">
-        <span className="text-sm text-slate-600">
+      <div className="flex min-w-0 shrink-0 items-center gap-2">
+        <span className="hidden max-w-48 truncate text-sm text-slate-600 sm:inline">
           {session.user.email}
         </span>
 
         <button
           type="button"
           onClick={handleLogout}
-          className="rounded bg-slate-800 px-3 py-1.5 text-sm text-white"
+          className="shrink-0 whitespace-nowrap rounded bg-slate-800 px-3 py-1.5 text-sm text-white"
         >
           ログアウト
         </button>

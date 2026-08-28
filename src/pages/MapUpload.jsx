@@ -97,6 +97,9 @@ export default function MapUpload() {
   // 実際に表示できたことをここで確かめてから，送信を許可する．
   const [imageReady, setImageReady] = useState(false);
 
+  // 公開/非公開を管理するState
+  const [isPublic, setIsPublic] = useState(true);
+
   // プレビュー用のURLは，使い終わったら必ず解放する．
   // 放置するとブラウザが画像データを掴んだままになる．
   //
@@ -228,6 +231,7 @@ export default function MapUpload() {
           image_url: urlData.publicUrl,
           user_id: user.id,
           folder_id: folderId || null,
+          is_public: isPublic,     // 保存処理追加
         })
         .select()
         .single();
@@ -310,6 +314,30 @@ export default function MapUpload() {
           />
         </div>
 
+        {/* 公開/非公開の切替チェックボックス */}
+        <div className="flex items-start gap-3 rounded-lg border border-slate-200 bg-slate-50 p-4">
+          <div className="flex h-5 items-center">
+            <input
+              id="isPublic"
+              type="checkbox"
+              checked={isPublic}
+              onChange={(e) => setIsPublic(e.target.checked)}
+              disabled={submitting}
+              className="h-4 w-4 rounded border-slate-300 text-slate-800 focus:ring-slate-500"
+            />
+          </div>
+          <div className="text-sm">
+            <label htmlFor="isPublic" className="font-medium text-slate-700">
+              このマップを公開する
+            </label>
+            <p className="text-slate-500">
+              {isPublic
+                ? "URLを知っている人なら誰でも閲覧できます．"
+                : "自分だけが閲覧できます．他の人がURLを開いても表示されません．"}
+            </p>
+          </div>
+        </div>
+
         <div>
           <p className="text-sm font-bold text-[#685F5D]">
             マップにする画像
@@ -328,11 +356,10 @@ export default function MapUpload() {
 
             <label
               htmlFor="image"
-              className={`inline-flex items-center justify-center gap-2 rounded-full bg-[#F47281] px-5 py-2.5 text-sm font-bold text-white shadow-sm transition ${
-                submitting
-                  ? "cursor-not-allowed opacity-50"
-                  : "cursor-pointer hover:bg-[#E95F70] hover:shadow-md"
-              }`}
+              className={`inline-flex items-center justify-center gap-2 rounded-full bg-[#F47281] px-5 py-2.5 text-sm font-bold text-white shadow-sm transition ${submitting
+                ? "cursor-not-allowed opacity-50"
+                : "cursor-pointer hover:bg-[#E95F70] hover:shadow-md"
+                }`}
             >
               <span aria-hidden="true">🖼️</span>
               {file ? "別の画像を選ぶ" : "画像ファイルを選ぶ"}
