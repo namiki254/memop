@@ -542,7 +542,7 @@ export default function MapList() {
                 className="block"
               >
                 {map.image_url ? (
-                  <div className="overflow-hidden bg-rose-50">
+                  <div className="overflow-hidden bg-rose-100">
                     <img
                       src={map.image_url}
                       alt={map.title}
@@ -550,7 +550,8 @@ export default function MapList() {
                     />
                   </div>
                 ) : (
-                  <div className="grid h-40 w-full place-items-center bg-rose-50 text-3xl">
+                  // bg-rose-50 だとほぼ白に見えてしまうため，rose-100 に変更．
+                  <div className="grid h-40 w-full place-items-center bg-rose-100 text-3xl">
                     🗺️
                   </div>
                 )}
