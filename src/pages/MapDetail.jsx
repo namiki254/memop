@@ -56,6 +56,10 @@ export default function MapDetail() {
   const [allMaps, setAllMaps] = useState([]);
   // 今ログインしている人が，このマップの作成者かどうか（削除の許可判定に使う）
   const isMapOwner = currentUser?.id === map?.user_id;
+  const isUnownedMap = map?.user_id === null;
+
+  const canEditMap =
+    isUnownedMap || isMapOwner;
 
   // マップ自体（タイトル・説明）の編集
   const [isEditingMap, setIsEditingMap] = useState(false);
@@ -185,9 +189,13 @@ export default function MapDetail() {
     return isTypeMatch && isTitleMatch;
   });
   const displayPins = visiblePins.map((pin) =>
-    isEditingPin && pin.id === selectedPin?.id ? selectedPin : pin
+    isEditingPin && pin.id === selectedPin?.id
+      ? {
+          ...selectedPin,
+          ...pendingPinAppearance,
+        }
+      : pin
   );
-
   // マップとピンを取得する
   const loadMapDetail = useCallback(async () => {
     setLoading(true);
@@ -431,7 +439,7 @@ export default function MapDetail() {
   async function handleUpdateMap(event) {
     event.preventDefault();
     if (savingMap) return;
-    if (!isMapOwner) {
+    if (!canEditMap) {
       setMapError("マップを編集できるのは作成者だけです．");
       return;
     }
@@ -471,7 +479,7 @@ export default function MapDetail() {
   async function handleDeleteMap() {
     if (savingMap) return;
 
-    if (!isMapOwner) {
+    if (!canEditMap) {
       setMapError("マップを削除できるのは作成者だけです．");
       return;
     }
@@ -744,7 +752,7 @@ export default function MapDetail() {
                   {copied ? "コピーしました！" : "このマップのURLをコピー"}
                 </button>
                 
-                {isMapOwner && (
+                {canEditMap && (
                   <button
                     onClick={startEditingMap}
                     className="rounded-md border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
@@ -753,7 +761,7 @@ export default function MapDetail() {
                   </button>
                 )}
                 {/* マップの削除は作成者だけができる */}
-                {isMapOwner && (
+                {canEditMap && (
                   <button
                     onClick={handleDeleteMap}
                     disabled={savingMap}

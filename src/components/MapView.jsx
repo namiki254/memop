@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { getPinEmoji } from "../lib/pinTypes";
+import { EmojiPin } from "./EmojiPin"
 
 /**
  * 地図表示コンポーネント．
@@ -17,6 +18,7 @@ import { getPinEmoji } from "../lib/pinTypes";
  *   x = 0.35, y = 0.62 なら「画像の左から35%，上から62%の位置」という意味．
  *   こうしておくと，画面や画像の大きさが変わってもピンがずれない．
  */
+
 
 export function MapView({ map, pins = [], pendingPin = null, onPinClick, onMapClick, movablePinId, onPinMove, }) {
   // 拡大率（scale）、最大拡大率（maxScale）のStateを管理
@@ -271,7 +273,7 @@ export function MapView({ map, pins = [], pendingPin = null, onPinClick, onMapCl
               }}
               className={`absolute -translate-x-1/2 -translate-y-full transition-transform hover:scale-125 focus:outline-none ${
                 movablePinId === pin.id
-                  ? "touch-none cursor-grab active:cursor-grabbing"
+                  ? "touch-none cursor-grab animate-pulse opacity-70 active:cursor-grabbing"
                   : ""
               }`}
               title={pin.title}
@@ -289,9 +291,8 @@ export function MapView({ map, pins = [], pendingPin = null, onPinClick, onMapCl
                   </span>
                 </span>
               ) : (
-                <span className="text-2xl drop-shadow">
-                  {getPinEmoji(pin.pin_type)}
-                </span>
+                <EmojiPin emoji={getPinEmoji(pin.pin_type)} size="sm"/>
+                
               )}
             </button>
           ))}
@@ -311,9 +312,7 @@ export function MapView({ map, pins = [], pendingPin = null, onPinClick, onMapCl
                   🚪
                 </span>
               ) : (
-                <span className="block text-3xl drop-shadow">
-                  {getPinEmoji(pendingPin.pin_type)}
-                </span>
+                <EmojiPin emoji={getPinEmoji(pendingPin.pin_type)} preview size="sm"/>
               )}
             </div>
           )}

@@ -338,7 +338,10 @@ export default function MapList() {
       data: { user },
     } = await supabase.auth.getUser();
 
-    if (!user || user.id !== folder.user_id) {
+    if (
+      folder.user_id !== null &&
+      user?.id !== folder.user_id
+    ) {
       setFolderError("このフォルダは削除できません．");
       return;
     }
@@ -373,7 +376,8 @@ export default function MapList() {
   }
 
   return (
-    <div className="h-full overflow-auto p-6">
+
+    <div className="h-full overflow-auto bg-[#fffaf5] p-6">
       <MoveMapModal
         map={movingMap}
         folders={allFolders}
@@ -460,7 +464,20 @@ export default function MapList() {
         value={searchQuery}
         onChange={(e) => setSearchQuery(e.target.value)}
         placeholder="マップ・フォルダを名前で検索"
-        className="mt-3 w-full max-w-sm rounded border border-slate-300 px-3 py-1.5 text-sm"
+        className="
+          mt-4 w-full max-w-sm
+          rounded-full
+          border border-rose-100
+          bg-white
+          px-4 py-2.5
+          text-sm
+          shadow-sm
+          outline-none
+          transition
+          focus:border-rose-300
+          focus:ring-4
+          focus:ring-rose-100
+        "
       />
 
       {isEmpty ? (
@@ -470,68 +487,94 @@ export default function MapList() {
             : "ここには何もありません．"}
         </p>
       ) : (
-        <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-3">
+        <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {visibleFolders.map((f) => (
             <div
               key={f.id}
-              className="flex items-center gap-3 rounded-lg border border-slate-200 bg-white p-4 shadow-sm"
+              className="
+                flex items-center gap-3
+                rounded-2xl
+                border border-amber-100
+                bg-amber-50
+                p-4
+                shadow-sm
+                transition
+                hover:-translate-y-0.5
+                hover:shadow-md
+              "
             >
               {/* フォルダ名をクリックするとフォルダを開く */}
-            <Link
-              to={`/folders/${f.id}`}
-              className="flex flex-1 items-center gap-3 hover:opacity-70"
-            >
-              <span className="text-2xl">📁</span>
-              <span className="font-bold text-slate-800">{f.name}</span>
-            </Link>
-
-            {/* 作成者だけ削除ボタンを表示する */}
-            {currentUser?.id === f.user_id && (
-              <button
-                type="button"
-                onClick={() => handleDeleteFolder(f)}
-                className="text-xs text-red-600 hover:underline"
+              <Link
+                to={`/folders/${f.id}`}
+                className="flex flex-1 items-center gap-3 hover:opacity-70"
               >
-                削除
-              </button>
-            )}
+                <span className="text-2xl">📁</span>
+
+                <div>
+                  <p className="font-bold text-[#3f3a3a]">{f.name}</p>
+                  <p className="mt-0.5 text-xs text-amber-700/60">
+                    フォルダ
+                  </p>
+                </div>
+              </Link>
+
+              {/* 作成者だけ削除ボタンを表示する */}
+              {(f.user_id === null ||
+                currentUser?.id === f.user_id) && (
+                <button
+                  type="button"
+                  onClick={() => handleDeleteFolder(f)}
+                  className="text-xs text-red-600 hover:underline"
+                >
+                  削除
+                </button>
+              )}
             </div>
           ))}
 
           {visibleMaps.map((map) => (
             <div
               key={map.id}
-              className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm"
+              className="group overflow-hidden rounded-2xl border border-rose-100 bg-white shadow-sm transition hover:-translate-y-1 hover:shadow-md"
             >
               <Link
                 to={`/maps/${map.id}`}
-                className="block hover:opacity-90"
+                className="block"
               >
                 {map.image_url ? (
-                  <img
-                    src={map.image_url}
-                    alt={map.title}
-                    className="h-40 w-full object-cover"
-                  />
+                  <div className="overflow-hidden bg-rose-50">
+                    <img
+                      src={map.image_url}
+                      alt={map.title}
+                      className="h-40 w-full object-cover transition duration-300 group-hover:scale-[1.03]"
+                    />
+                  </div>
                 ) : (
-                  <div className="h-40 w-full bg-slate-200" />
+                  <div className="grid h-40 w-full place-items-center bg-rose-50 text-3xl">
+                    🗺️
+                  </div>
                 )}
 
                 <div className="p-4">
-                  <h3 className="font-bold text-slate-800">{map.title}</h3>
-                  <p className="mt-1 text-sm text-slate-500">
-                    {map.description}
-                  </p>
+                  <h3 className="font-bold text-[#3f3a3a]">
+                    {map.title}
+                  </h3>
+
+                  {map.description && (
+                    <p className="mt-1 line-clamp-2 text-sm text-[#817878]">
+                      {map.description}
+                    </p>
+                  )}
                 </div>
               </Link>
 
               {/* マップ作成者にだけ移動ボタンを表示する */}
               {currentUser?.id === map.user_id && (
-                <div className="border-t border-slate-100 px-4 py-2">
+                <div className="border-t border-rose-100 px-4 py-2">
                   <button
                     type="button"
                     onClick={() => startMovingMap(map)}
-                    className="text-sm text-blue-600 hover:underline"
+                    className="text-sm font-medium text-rose-600 hover:underline"
                   >
                     移動
                   </button>
