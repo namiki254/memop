@@ -92,6 +92,15 @@ export default function MapList() {
       setError(null);
 
       try {
+        // トップページで非ログインの場合は一覧を表示しない
+        if (!folderId && !currentUser) {
+          setFolder(null);
+          setBreadcrumb([]);
+          setChildFolders([]);
+          setMaps([]);
+        return;
+        }
+
         // 今のフォルダ自身と，そこから親をたどってパンくずを組み立てる．
         let currentFolder = null;
         const crumbs = [];
@@ -163,7 +172,7 @@ export default function MapList() {
     return () => {
       cancelled = true;
     };
-  }, [folderId]);
+  }, [folderId, currentUser]);
 
   function startCreatingFolder() {
     setFolderError("");
@@ -266,8 +275,24 @@ export default function MapList() {
     return <ErrorMessage message={error.message} />;
   }
 
+  if (!folderId && !currentUser) {
+    return (
+      <div className="h-full overflow-auto bg-[#fffaf5] p-6">
+        <h2 className="text-2xl font-bold text-slate-800">マップ一覧</h2>
+        <p className="mt-6 text-slate-500">
+          マップ一覧を見るにはログインしてください。
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div className="h-full overflow-auto bg-[#fffaf5] p-6">
+      {!folderId && !currentUser && (
+        <p className="mt-6 text-slate-500">
+          マップ一覧を見るにはログインしてください。
+        </p>
+      )}
       {/* パンくず．常にホームから始まる． */}
       <p className="text-sm text-slate-500">
         <Link to="/" className="hover:underline">
