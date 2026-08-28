@@ -6,6 +6,7 @@ import ErrorMessage from "../components/ErrorMessage";
 import { MapView } from "../components/MapView";
 import { PinPanel } from "../components/PinPanel";
 import { PIN_TYPES } from "../lib/pinTypes";
+import { normalizeSearchText } from "../lib/searchText";
 
 /**
  * マップ詳細ページ．
@@ -58,8 +59,17 @@ export default function MapDetail() {
   const isMapOwner = currentUser?.id === map?.user_id;
   const isUnownedMap = map?.user_id === null;
 
+  // 持ち主なしマップは誰でも編集できる仕様だが，未ログインの匿名ユーザーには許可しない．
   const canEditMap =
-    isUnownedMap || isMapOwner;
+    isMapOwner || (isUnownedMap && Boolean(currentUser));
+
+  // ピンの編集・削除ができるか（持ち主なしピンはログイン済みなら誰でも）．
+  // userId は呼び出し側で supabase.auth.getUser() から取り直した最新の値を渡す．
+  function canEditPin(pin, userId) {
+    if (!pin) return false;
+    if (pin.user_id === null) return Boolean(userId);
+    return userId === pin.user_id;
+  }
 
   // マップ自体（タイトル・説明）の編集
   const [isEditingMap, setIsEditingMap] = useState(false);
@@ -173,17 +183,20 @@ export default function MapDetail() {
     setTypeVisibility({});
   }
 
-  // 表示対象のピンに絞り込む（種類フィルタ × タイトル検索のAND条件）
+  // 表示対象のピンに絞り込む（種類フィルタ × タイトル検索のAND条件）．
+  // ただし今まさに編集中のピンは，フィルタに一致しなくなっても地図上から消さない
+  // （フィルタ変更でドラッグ対象が消えて操作できなくなるのを防ぐ）．
   const visiblePins = pins.filter((pin) => {
+    if (isEditingPin && pin.id === selectedPin?.id) return true;
+
     // 1. ピンの種類による絞り込み
     const pinType = pin?.pin_type || PIN_TYPES[0].value;
     const isTypeMatch = isTypeEnabled(pinType);
 
-    // 2. タイトルによる絞り込み（小文字化してトリム後を判定）
-    const title = pin?.title || "";
-    const isTitleMatch = title
-      .toLowerCase()
-      .includes(searchQuery.trim().toLowerCase());
+    // 2. タイトルによる絞り込み（マップ・フォルダ検索と同じ表記揺れ吸収を適用）
+    const isTitleMatch = normalizeSearchText(pin?.title).includes(
+      normalizeSearchText(searchQuery.trim()),
+    );
 
     // 両方の条件を満たすものだけ表示
     return isTypeMatch && isTitleMatch;
@@ -259,6 +272,15 @@ export default function MapDetail() {
   useEffect(() => {
     loadMapDetail();
   }, [loadMapDetail]);
+
+  // パネルが閉じたら（他の人の削除で自動的に閉じた場合も含む），
+  // 編集モード・エラー表示を残さないようにする．
+  useEffect(() => {
+    if (!selectedPin) {
+      setIsEditingPin(false);
+      setPinError("");
+    }
+  }, [selectedPin]);
 
   // 同じフォルダの他マップを取る．
   // 依存を map?.folder_id（値）にしているので，同じフォルダ内で
@@ -365,6 +387,11 @@ export default function MapDetail() {
             );
           } else if (payload.eventType === "DELETE") {
             setPins((current) => current.filter((p) => p.id !== payload.old.id));
+            // 今開いている・編集中のピンが他の人に消された場合，
+            // 存在しないピンをパネルに表示し続けないようにする．
+            setSelectedPin((current) =>
+              current?.id === payload.old.id ? null : current,
+            );
           }
         },
       )
@@ -450,10 +477,16 @@ export default function MapDetail() {
     setMapError("");
 
     try {
-      const { data: updated, error: updateError } = await supabase
+      // RLSに加えて，クライアント側でも所有者条件を絞り込んでおく（多層防御）．
+      let updateQuery = supabase
         .from("maps")
         .update({ title: trimmedTitle, description: mapDescription.trim() })
-        .eq("id", id)
+        .eq("id", id);
+      updateQuery = isUnownedMap
+        ? updateQuery.is("user_id", null)
+        : updateQuery.eq("user_id", currentUser.id);
+
+      const { data: updated, error: updateError } = await updateQuery
         .select()
         .single();
 
@@ -496,10 +529,13 @@ export default function MapDetail() {
     setMapError("");
 
     try {
-      const { error: deleteError } = await supabase
-        .from("maps")
-        .delete()
-        .eq("id", id);
+      // RLSに加えて，クライアント側でも所有者条件を絞り込んでおく（多層防御）．
+      let deleteQuery = supabase.from("maps").delete().eq("id", id);
+      deleteQuery = isUnownedMap
+        ? deleteQuery.is("user_id", null)
+        : deleteQuery.eq("user_id", currentUser.id);
+
+      const { error: deleteError } = await deleteQuery;
 
       if (deleteError) {
         console.error("マップの削除に失敗", deleteError);
@@ -587,12 +623,13 @@ export default function MapDetail() {
         error: userError,
         } = await supabase.auth.getUser();
 
-      if (userError || !user || user.id !== selectedPin.user_id) {
+      if (userError || !user || !canEditPin(selectedPin, user.id)) {
         setPinError("このピンは編集できません．");
         return;
       }
 
-      const { data: updated, error: updateError } = await supabase
+      // RLSに加えて，クライアント側でも所有者条件を絞り込んでおく（多層防御）．
+      let updatePinQuery = supabase
         .from("pins")
         .update({
           x: selectedPin.x,
@@ -603,7 +640,13 @@ export default function MapDetail() {
           kind,
           link_map_id: kind === "button" ? linkMapId : null,
         })
-        .eq("id", selectedPin.id)
+        .eq("id", selectedPin.id);
+      updatePinQuery =
+        selectedPin.user_id === null
+          ? updatePinQuery.is("user_id", null)
+          : updatePinQuery.eq("user_id", user.id);
+
+      const { data: updated, error: updateError } = await updatePinQuery
         .select()
         .single();
 
@@ -640,7 +683,7 @@ export default function MapDetail() {
         error: userError,
       } = await supabase.auth.getUser();
 
-      if (userError || !user || user.id !== selectedPin.user_id) {
+      if (userError || !user || !canEditPin(selectedPin, user.id)) {
         setPinError("このピンは削除できません．");
         return;
       }
@@ -649,10 +692,15 @@ export default function MapDetail() {
       if (!window.confirm("このピンを削除しますか？")) {
         return;
       }
-      const { error: deleteError } = await supabase
-        .from("pins")
-        .delete()
-        .eq("id", selectedPin.id);
+
+      // RLSに加えて，クライアント側でも所有者条件を絞り込んでおく（多層防御）．
+      let deletePinQuery = supabase.from("pins").delete().eq("id", selectedPin.id);
+      deletePinQuery =
+        selectedPin.user_id === null
+          ? deletePinQuery.is("user_id", null)
+          : deletePinQuery.eq("user_id", user.id);
+
+      const { error: deleteError } = await deletePinQuery;
 
       if (deleteError) {
         console.error("ピンの削除に失敗", deleteError);
@@ -833,7 +881,7 @@ export default function MapDetail() {
                   onChange={() => handleTypeToggle(type.value)}
                   className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
                 />
-                <span>
+                <span className="max-w-[8rem] truncate">
                   {type.isCustom
                     ? type.label
                     : `${type.emoji}: ${type.label}`}
@@ -849,6 +897,9 @@ export default function MapDetail() {
 
         <div className="min-h-0 flex-1">
           <MapView
+            // マップを切り替えたときにズーム倍率(scale)をリセットするため，
+            // マップごとに別インスタンスとして作り直す．
+            key={map.id}
             map={map}
             pins={displayPins}
             pendingPin={
