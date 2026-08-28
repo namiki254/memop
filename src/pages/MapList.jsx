@@ -51,6 +51,9 @@ export default function MapList() {
   // 選択肢: "desc"(降順), "asc"(昇順)
   const [sortOrder, setSortOrder] = useState("desc");
 
+  // お気に入りフィルターのON/OFF (初期値: false)
+  const [showOnlyFavorites, setShowOnlyFavorites] = useState(false);
+
   // 昇順/降順の自動切換
   useEffect(() => {
     if (sortKey === "title") {
@@ -65,21 +68,15 @@ export default function MapList() {
   const trimmedQuery = searchQuery.trim();
   const normalizedQuery = normalizeSearchText(trimmedQuery);
 
-  // const visibleMaps = trimmedQuery
-  //   ? maps.filter((map) =>
-  //     normalizeSearchText(map.title).includes(normalizedQuery),
-  //   )
-  //   : maps;
-
   // 並び替えロジックの計算処理: sortKey, sortOrderを使ってvisibleMapsをソート
-  // 検索クエリで絞り込み
-  const filteredMaps = trimmedQuery
-    ? maps.filter((map) =>
-      normalizeSearchText(map.title).includes(normalizedQuery),
-    )
-    : maps;
+  // マップの絞り込み（名前検索＋お気に入り）
+  const filteredMaps = maps.filter((map) => {
+    const matchesSearch = !trimmedQuery || normalizeSearchText(map.title).includes(normalizedQuery);
+    const matchesFavorite = !showOnlyFavorites || map.is_favorited;
+    return matchesSearch && matchesFavorite;
+  });
 
-  // 選択されたsortKeyとsortOrderに基づいて並び替え
+  // sortロジック: 選択されたsortKeyとsortOrderに基づいて並び替え
   const visibleMaps = [...filteredMaps].sort((a, b) => {
     let valA = a[sortKey];
     let valB = b[sortKey];
@@ -94,11 +91,13 @@ export default function MapList() {
     return 0;
   });
 
-  const visibleFolders = trimmedQuery
-    ? childFolders.filter((f) =>
-      normalizeSearchText(f.name).includes(normalizedQuery),
-    )
-    : childFolders;
+  // フォルダの絞り込み（名前検索＋お気に入り）
+  const visibleFolders = childFolders.filter((f) => {
+    const matchesSearch = !trimmedQuery || normalizeSearchText(f.name).includes(normalizedQuery);
+    const matchesFavorite = !showOnlyFavorites || f.is_favorited;
+    return matchesSearch && matchesFavorite;
+  });
+
   const isEmpty = visibleFolders.length === 0 && visibleMaps.length === 0;
 
   useEffect(() => {
@@ -116,7 +115,7 @@ export default function MapList() {
         while (cursor) {
           const { data, error: folderError } = await supabase
             .from("folders")
-            .select("*")
+            .select("*, folder_favorites(user_id)")
             .eq("id", cursor)
             .single();
 
@@ -132,33 +131,31 @@ export default function MapList() {
         const { data: folders, error: foldersError } = folderId
           ? await supabase
             .from("folders")
-            .select("*")
+            .select("*, folder_favorites(user_id)")
             .eq("parent_folder_id", folderId)
             .order("name")
           : await supabase
             .from("folders")
-            .select("*")
+            .select("*, folder_favorites(user_id)")
             .is("parent_folder_id", null)
             .order("name");
 
         if (cancelled) return;
         if (foldersError) throw foldersError;
 
-        // const { data: mapsData, error: mapsError } = folderId
-        //   ? await supabase
-        //     .from("maps")
-        //     .select("*")
-        //     .eq("folder_id", folderId)
-        //     .order("created_at", { ascending: false })
-        //   : await supabase
-        //     .from("maps")
-        //     .select("*")
-        //     .is("folder_id", null)
-        //     .order("created_at", { ascending: false });
-
         // maps単体ではなく、map_favoritesも同時に取得
         // ログイン中のユーザー情報を取得（お気に入り判定に使用）
         const { data: { user } } = await supabase.auth.getUser();
+
+        // 取得したフォルダーデータにis_favoritedを追加
+        const formattedFolders = (folders ?? []).map((f) => {
+          const favorites = f.folder_favorites || [];
+          return {
+            ...f,
+            // ログインユーザーが自分のお気に入りリストに含まれているか判定
+            is_favorited: user ? favorites.some((fav) => fav.user_id === user.id) : false,
+          };
+        });
 
         // mapsテーブルの取得時にmap_favoritesのuser_id一覧もセットで取得する
         const { data: mapsData, error: mapsError } = folderId
@@ -188,8 +185,7 @@ export default function MapList() {
 
         setFolder(currentFolder);
         setBreadcrumb(crumbs);
-        setChildFolders(folders ?? []);
-        // setMaps(mapsData ?? []);
+        setChildFolders(formattedFolders);   // 変更
         // StateへのセットをformattedMapsに変更
         setMaps(formattedMaps);
       } catch (fetchError) {
@@ -282,8 +278,7 @@ export default function MapList() {
           .eq("user_id", user.id);
 
         if (deleteError) throw deleteError;
-      }
-      else {
+      } else {
         // お気に入り未登録ならお気に入りに追加（map_favoriteに追加）
         const { error: insertError } = await supabase
           .from("map_favorites")
@@ -308,8 +303,58 @@ export default function MapList() {
         })
       );
     } catch (e) {
-      console.error("お気に入りの更新に失敗しました", e);
-      alert("お気に入りの更新に失敗しました. , ${e.message}")
+      console.error("マップのお気に入りの更新に失敗しました", e);
+      alert("お気に入りの更新に失敗しました. ${e.message}")
+    }
+  }
+
+  // フォルダのお気に入り状態を切り替える関数（ON/OFF）
+  async function toggleFolderFavorite(event, folderId, isFavorited) {
+    // 親要素（Linkタグ）へのクリックイベント伝播（ページ遷移）を防ぐ
+    event.preventDefault();
+    event.stopPropagation();
+
+    // ログインチェック
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      alert("お気に入り機能を利用するにはログインが必要です. ");
+      return;
+    }
+
+    try {
+      if (isFavorited) {
+        // 登録済なら削除
+        const { error: deleteError } = await supabase
+          .from("folder_favorites")
+          .delete()
+          .eq("folder_id", folderId)
+          .eq("user_id", user.id);
+
+        if (deleteError) throw deleteError;
+      } else {
+        // 未登録なら追加
+        const { error: insertError } = await supabase
+          .from("folder_favorites")
+          .insert({ folder_id: folderId, user_id: user.id });
+
+        if (insertError) throw insertError;
+      }
+
+      // Stateを即座に更新
+      setChildFolders((prevFolders) =>
+        prevFolders.map((f) => {
+          if (f.id === folderId) {
+            return {
+              ...f,
+              is_favorited: !isFavorited,
+            };
+          }
+          return f;
+        })
+      );
+    } catch (e) {
+      console.error("フォルダのお気に入り更新に失敗しました", e);
+      alert(`お気に入りの更新に失敗しました. ${e.message}`);
     }
   }
 
@@ -401,6 +446,19 @@ export default function MapList() {
           className="w-full max-w-sm rounded border border-slate-300 px-3 py-1.5 text-sm"
         />
 
+        {/* お気に入りフィルターボタン */}
+        <button
+          type="button"
+          onClick={() => setShowOnlyFavorites((prev) => !prev)}
+          className={`flex items-center gap-1 rounded border px-3 py-1.5 text-sm transition ${showOnlyFavorites
+            ? "border-red-300 bg-red-50 font-bold text-red-600"
+            : "border-slate-300 bg-white text-slate-600 hover:bg-slate-50"
+            }`}
+        >
+          <span className={showOnlyFavorites ? "text-red-500" : "text-slate-400"}>♥</span>
+          お気に入りのみ
+        </button>
+
         {/* 並び替えセレクトボックス */}
         <div className="flex items-center gap-2 text-sm text-slate-600">
           <label htmlFor="sortKeySelect">並び替え:</label>
@@ -445,10 +503,26 @@ export default function MapList() {
                   <Link
                     key={f.id}
                     to={`/folders/${f.id}`}
-                    className="flex items-center gap-3 rounded-lg border border-slate-200 bg-white p-4 shadow-sm hover:bg-slate-50"
+                    // justify-between を追加して両端揃えにする
+                    className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white p-4 shadow-sm hover:bg-slate-50"
                   >
-                    <span className="text-2xl">📁</span>
-                    <span className="font-bold text-slate-800">{f.name}</span>
+                    <div className="flex min-w-0 items-center gap-3">
+                      <span className="flex-shrink-0 text-2xl">📁</span>
+                      <span className="truncate font-bold text-slate-800">{f.name}</span>
+                    </div>
+
+                    {/* フォルダ用お気に入りボタン */}
+                    <button
+                      type="button"
+                      onClick={(e) => toggleFolderFavorite(e, f.id, f.is_favorited)}
+                      className="flex-shrink-0 transition hover:scale-110"
+                      title={f.is_favorited ? "お気に入り解除" : "お気に入り登録"}
+                    >
+                      <span className={`text-2xl ${f.is_favorited ? "text-red-500" : "text-slate-300"}`}>
+                        ♥
+                      </span>
+                    </button>
+
                   </Link>
                 ))}
               </div>
