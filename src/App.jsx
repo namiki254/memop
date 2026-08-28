@@ -1,4 +1,10 @@
-import { Routes, Route, Link, useLocation, useNavigate } from "react-router-dom";
+import {
+  Routes,
+  Route,
+  Link,
+  useLocation,
+  useNavigate,
+} from "react-router-dom";
 import { supabase } from "./lib/supabase.js";
 import MapList from "./pages/MapList.jsx";
 import MapUpload from "./pages/MapUpload.jsx";
@@ -27,8 +33,9 @@ export default function App() {
   // ヘッダーは <Routes> の外にあって :folderId を直接は受け取れないので，
   // 今のURLから読み取る．
   const folderMatch = location.pathname.match(/^\/folders\/([^/]+)/);
-  const newMapHref = folderMatch ? `/maps/new?folder=${folderMatch[1]}` : "/maps/new";
-
+  const newMapHref = folderMatch
+    ? `/maps/new?folder=${folderMatch[1]}`
+    : "/maps/new";
 
   async function handleNewMap() {
     const {
@@ -44,41 +51,43 @@ export default function App() {
   }
 
   return (
-    <div className="flex h-screen flex-col">
+    <div className="flex h-screen w-full min-w-0 max-w-full flex-col overflow-x-hidden">
       <header
         className="
-          flex items-center gap-6
+          flex min-w-0 flex-wrap items-center gap-2
           border-b border-rose-100
           bg-white/90
-          px-6 py-3
+          px-4 py-3
           shadow-sm
           backdrop-blur
+          sm:flex-nowrap
+          sm:gap-6
+          sm:px-6
         "
       >
         <Link
           to="/"
           className="
             mr-auto
-            text-2xl font-black
+            shrink-0
+            whitespace-nowrap
+            text-xl font-black
             tracking-tight
             text-rose-400
+            sm:text-2xl
           "
         >
           めもっぷ
         </Link>
-
-        {/* issue #28 用のテストページへのリンク（確認後消してOK）*/}
-        <Link to="/test" className="text-sm text-blue-600 underline">
-          [テスト] MapView確認
-        </Link>
-
         <button
           type="button"
           onClick={handleNewMap}
           className="
+            shrink-0
+            whitespace-nowrap
             rounded-full
             bg-rose-400
-            px-4 py-2
+            px-3 py-2
             text-sm font-bold
             text-white
             shadow-sm
@@ -86,15 +95,15 @@ export default function App() {
             hover:-translate-y-0.5
             hover:bg-rose-500
             hover:shadow-md
+            sm:px-4
           "
         >
           新しいマップ
         </button>
-
         <AuthButton />
       </header>
 
-      <main className="min-h-0 flex-1">
+      <main className="min-h-0 min-w-0 flex-1 overflow-x-hidden">
         <Routes>
           <Route path="/" element={<MapList />} />
           <Route path="/folders/:folderId" element={<MapList />} />
