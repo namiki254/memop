@@ -203,7 +203,9 @@ export function MapView({ map, pins = [], pendingPin = null, onPinClick, onMapCl
         isScaled === true のときは flex 中央寄せを解除し、m-auto にすることで左上欠けを防止
       */}
       <div
-        className={`flex min-h-full min-w-full ${isScaled ? "" : "items-center justify-center"
+        className={`flex min-h-full min-w-full ${isScaled
+            ? ""
+            : "items-start justify-center sm:items-center"
           }`}
       >
         {/* 
@@ -219,8 +221,8 @@ export function MapView({ map, pins = [], pendingPin = null, onPinClick, onMapCl
           - px単位でアスペクト比を動的に維持適用し、画像のズレと縦潰れを完璧に防止します。
         */}
         <div
-          ref = {mapAreaRef}
-          className="relative m-auto leading-none transition-all duration-150"
+          ref={mapAreaRef}
+          className="relative mx-auto leading-none transition-all duration-150 sm:m-auto"
           style={
             isScaled
               ? {
@@ -271,11 +273,10 @@ export function MapView({ map, pins = [], pendingPin = null, onPinClick, onMapCl
                 left: `${pin.x * 100}%`,
                 top: `${pin.y * 100}%`,
               }}
-              className={`absolute -translate-x-1/2 -translate-y-full transition-transform hover:scale-125 focus:outline-none ${
-                movablePinId === pin.id
+              className={`absolute -translate-x-1/2 -translate-y-full transition-transform hover:scale-125 focus:outline-none ${movablePinId === pin.id
                   ? "touch-none cursor-grab animate-pulse opacity-70 active:cursor-grabbing"
                   : ""
-              }`}
+                }`}
               title={pin.title}
             >
               {pin.kind === "button" ? (
@@ -291,8 +292,8 @@ export function MapView({ map, pins = [], pendingPin = null, onPinClick, onMapCl
                   </span>
                 </span>
               ) : (
-                <EmojiPin emoji={getPinEmoji(pin.pin_type)} size="sm"/>
-                
+                <EmojiPin emoji={getPinEmoji(pin.pin_type)} size="sm" />
+
               )}
             </button>
           ))}
@@ -312,7 +313,7 @@ export function MapView({ map, pins = [], pendingPin = null, onPinClick, onMapCl
                   🚪
                 </span>
               ) : (
-                <EmojiPin emoji={getPinEmoji(pendingPin.pin_type)} preview size="sm"/>
+                <EmojiPin emoji={getPinEmoji(pendingPin.pin_type)} preview size="sm" />
               )}
             </div>
           )}
