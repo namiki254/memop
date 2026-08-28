@@ -589,9 +589,9 @@ export default function MapList() {
               <button
                 type="button"
                 onClick={copyFolderUrl}
-                className="rounded border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
+                className="rounded-md bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-700 hover:bg-slate-200"
               >
-                このフォルダのURLをコピー
+                フォルダのURLをコピー
               </button>
             </div>
           )}
