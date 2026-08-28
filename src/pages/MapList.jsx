@@ -136,11 +136,40 @@ export default function MapList() {
           .eq("user_id", currentUser.id);
         }
 
-const { data: folders, error: foldersError } = await foldersQuery;
+        const { data: folders, error: foldersError } = await foldersQuery;
 
         if (cancelled) return;
         if (foldersError) throw foldersError;
 
+        // トップでは、自分が保存したフォルダも取得する
+        let savedFolders = [];
+
+        if (!folderId) {
+          const { data: savedFolderRows, error: savedFoldersError } = await supabase
+            .from("saved_folders")
+            .select("folder_id")
+            .eq("user_id", currentUser.id);
+
+          if (cancelled) return;
+          if (savedFoldersError) throw savedFoldersError;
+
+          const savedFolderIds = (savedFolderRows ?? []).map(
+            (row) => row.folder_id,
+          );
+
+          if (savedFolderIds.length > 0) {
+            const { data, error: savedFolderDataError } = await supabase
+              .from("folders")
+              .select("*")
+              .in("id", savedFolderIds);
+
+            if (cancelled) return;
+            if (savedFolderDataError) throw savedFolderDataError;
+
+            savedFolders = data ?? [];
+          }
+      }
+        
         let mapsQuery = supabase
           .from("maps")
           .select("*")
@@ -161,10 +190,49 @@ const { data: folders, error: foldersError } = await foldersQuery;
         if (cancelled) return;
         if (mapsError) throw mapsError;
 
+        // トップでは、自分が保存したマップも取得する
+        let savedMaps = [];
+
+        if (!folderId) {
+          const { data: savedMapRows, error: savedMapsError } = await supabase
+            .from("saved_maps")
+            .select("map_id")
+            .eq("user_id", currentUser.id);
+
+          if (cancelled) return;
+          if (savedMapsError) throw savedMapsError;
+
+          const savedMapIds = (savedMapRows ?? []).map((row) => row.map_id);
+
+          if (savedMapIds.length > 0) {
+            const { data, error: savedMapDataError } = await supabase
+              .from("maps")
+              .select("*")
+              .in("id", savedMapIds);
+
+            if (cancelled) return;
+            if (savedMapDataError) throw savedMapDataError;
+
+            savedMaps = data ?? [];
+          }
+        }
+
         setFolder(currentFolder);
         setBreadcrumb(crumbs);
-        setChildFolders(folders ?? []);
-        setMaps(mapsData ?? []);
+        const mergedFolders = [...(folders ?? []), ...savedFolders];
+
+        const uniqueFolders = Array.from(
+          new Map(mergedFolders.map((folder) => [folder.id, folder])).values(),
+        );
+
+        setChildFolders(uniqueFolders);
+        const mergedMaps = [...(mapsData ?? []), ...savedMaps];
+
+        const uniqueMaps = Array.from(
+          new Map(mergedMaps.map((map) => [map.id, map])).values(),
+        );
+
+        setMaps(uniqueMaps);
       } catch (fetchError) {
         if (!cancelled) {
           setError(fetchError);
