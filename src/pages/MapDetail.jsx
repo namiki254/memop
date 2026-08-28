@@ -346,12 +346,22 @@ export default function MapDetail() {
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, newSession) => {
-      setCurrentUser(newSession?.user ?? null);
+      const newUser = newSession?.user ?? null;
+      setCurrentUser(newUser);
 
-      // 操作中にログアウトした場合はパネルを閉じる
-      if (!newSession) {
+      // ログアウト時の処理
+      if (!newUser) {
         setSelectedPin(null);
         setIsEditingPin(false);
+
+        // 非公開マップを閲覧中だった場合、画面を非表示にする
+        setMap((currentMap) => {
+          if (currentMap && !currentMap.is_public) {
+            // リダイレクトせず「マップが見つかりません」画面にする
+            return null;
+          }
+          return currentMap;
+        });
       }
     });
 
