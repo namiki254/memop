@@ -43,6 +43,7 @@ export function PinPanel({
   mapOptions = [],
   onSave,
   onClose,
+  onNavigate,
   onPreviewChange,
   //  Update, Deleteを追加
   onUpdate,
@@ -176,6 +177,10 @@ export function PinPanel({
     setCustomPinType(isCustomPinType ? pin.pin_type : "");
     onEditCancel?.();
   }
+
+  const destinationMap = mapOptions.find(
+    (option) => option.id === pin?.link_map_id,
+  );
 
   return (
     <div
@@ -441,9 +446,25 @@ export function PinPanel({
             {/* 通常はここに来ない．ボタンは押した瞬間に移動するので，
               このビューが出るのは移動先マップが消えて壊れているときだけ． */}
             {pin.kind === "button" ? (
-              <p className="mt-2 text-sm text-red-600">
-                移動先のマップが見つかりません．編集して選び直してください．
-              </p>
+              pin.link_map_id ? (
+                <button
+                  type="button"
+                  onClick={() => onNavigate?.(pin.link_map_id)}
+                  className="mt-4 flex w-full items-center justify-center gap-2 rounded-2xl bg-[#7DCDB5] px-5 py-3.5 text-sm font-black text-white shadow-[0_7px_18px_rgba(125,205,181,0.35)] transition hover:-translate-y-0.5 hover:bg-[#65BDA3]"
+                >
+                  <span aria-hidden="true">🚪</span>
+                  <span>
+                    {destinationMap
+                      ? `${destinationMap.title}へ移動`
+                      : "移動先のマップへ"}
+                  </span>
+                  <span aria-hidden="true">→</span>
+                </button>
+              ) : (
+                <p className="mt-3 rounded-xl bg-red-50 p-3 text-sm text-red-600">
+                  移動先のマップが見つかりません。編集して選び直してください。
+                </p>
+              )
             ) : pin.content ? (
               <p className="mt-2 text-sm break-words whitespace-pre-wrap text-slate-600">
                 {/* {pin.content} */}

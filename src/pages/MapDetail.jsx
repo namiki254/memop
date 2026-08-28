@@ -9,6 +9,8 @@ import { PIN_TYPES } from "../lib/pinTypes";
 import { normalizeSearchText } from "../lib/searchText";
 import SaveToMyListButton from "../components/SaveToMyListButton";
 
+const MAP_BUTTON_FILTER = "kind:button";
+
 /**
  * マップ詳細ページ．
  *
@@ -103,8 +105,13 @@ export default function MapDetail() {
     ),
   ];
 
-  //ピンの列挙
+  //表示種類一覧
   const availablePinTypes = [
+    {
+      value: MAP_BUTTON_FILTER,
+      label: "マップ移動",
+      emoji: "🚪",
+    },
     ...PIN_TYPES,
     ...customTypeValues.map((value) => ({
       value,
@@ -195,18 +202,18 @@ export default function MapDetail() {
   // ただし今まさに編集中のピンは，フィルタに一致しなくなっても地図上から消さない
   // （フィルタ変更でドラッグ対象が消えて操作できなくなるのを防ぐ）．
   const visiblePins = pins.filter((pin) => {
-    if (isEditingPin && pin.id === selectedPin?.id) return true;
+    const displayType =
+      pin.kind === "button"
+        ? MAP_BUTTON_FILTER
+        : pin?.pin_type || PIN_TYPES[0].value;
 
-    // 1. ピンの種類による絞り込み
-    const pinType = pin?.pin_type || PIN_TYPES[0].value;
-    const isTypeMatch = isTypeEnabled(pinType);
+    const isTypeMatch = isTypeEnabled(displayType);
 
-    // 2. タイトルによる絞り込み（マップ・フォルダ検索と同じ表記揺れ吸収を適用）
-    const isTitleMatch = normalizeSearchText(pin?.title).includes(
-      normalizeSearchText(searchQuery.trim()),
-    );
+    const title = pin?.title || "";
+    const isTitleMatch = title
+      .toLowerCase()
+      .includes(searchQuery.trim().toLowerCase());
 
-    // 両方の条件を満たすものだけ表示
     return isTypeMatch && isTitleMatch;
   });
   const displayPins = visiblePins.map((pin) =>
@@ -466,33 +473,40 @@ export default function MapDetail() {
   }
 
   /** 既にあるピンがクリックされた．中身を表示する */
-  async function handlePinClick(pin) {
-    // ボタンのピンは，移動先が公開されているかチェックしてから遷移する
-    if (pin.kind === "button") {
-      if (pin.link_map_id) {
-        // 移動先のマップの最新の状態（存在するか、非公開化されていないか）を確認
-        const { data: targetMap } = await supabase
-          .from("maps")
-          .select("id, is_public")
-          .eq("id", pin.link_map_id)
-          .maybeSingle();
-
-        // 移動先マップが存在しない、または非公開（is_public = false）の場合
-        if (!targetMap || !targetMap.is_public) {
-          setPinError("移動先のマップが存在しないか、非公開に変更されたため移動できません．");
-          setSelectedPin(pin); // 修正・削除できるようにパネルを開く
-          return;
-        }
-
-        // チェックを通過したら安全に移動
-        navigate(`/maps/${pin.link_map_id}`);
-        return;
-      }
-    }
-
+  /** ピンをクリックしたら詳細パネルを開く */
+  function handlePinClick(pin) {
     setPinError("");
     setIsEditingPin(false);
     setSelectedPin(pin);
+  }
+
+  /** パネルの移動ボタンから移動する */
+  async function handleNavigateToMap(linkMapId) {
+    setPinError("");
+
+    if (!linkMapId) {
+      setPinError("移動先のマップが設定されていません．");
+      return;
+    }
+
+    const { data: targetMap, error: targetMapError } = await supabase
+      .from("maps")
+      .select("id, is_public")
+      .eq("id", linkMapId)
+      .maybeSingle();
+
+    if (
+      targetMapError ||
+      !targetMap ||
+      !targetMap.is_public
+    ) {
+      setPinError(
+        "移動先のマップが存在しないか、非公開に変更されたため移動できません．",
+      );
+      return;
+    }
+
+    navigate(`/maps/${linkMapId}`);
   }
 
   function closePanel() {
@@ -1106,6 +1120,7 @@ export default function MapDetail() {
             mapOptions={allMaps.filter((m) => m.id !== id)}
             onSave={handleSavePin}
             onClose={closePanel}
+            onNavigate={handleNavigateToMap}
             onUpdate={handleUpdatePin}
             onDelete={handleDeletePin}
             onPreviewChange={setPendingPinAppearance}
