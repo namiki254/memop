@@ -1,1 +1,26 @@
 @import "tailwindcss";
+
+:root {
+  font-family:
+    "Hiragino Sans",
+    "Yu Gothic",
+    "Noto Sans JP",
+    sans-serif;
+
+  color: #3f3a3a;
+  background: #fffaf5;
+}
+
+body {
+  margin: 0;
+  background:
+    radial-gradient(circle at top left, #fff1f1 0, transparent 28rem),
+    #fffaf5;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}

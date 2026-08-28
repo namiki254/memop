@@ -189,9 +189,13 @@ export default function MapDetail() {
     return isTypeMatch && isTitleMatch;
   });
   const displayPins = visiblePins.map((pin) =>
-    isEditingPin && pin.id === selectedPin?.id ? selectedPin : pin
+    isEditingPin && pin.id === selectedPin?.id
+      ? {
+          ...selectedPin,
+          ...pendingPinAppearance,
+        }
+      : pin
   );
-
   // マップとピンを取得する
   const loadMapDetail = useCallback(async () => {
     setLoading(true);
