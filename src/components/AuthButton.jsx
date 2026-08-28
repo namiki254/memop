@@ -91,15 +91,15 @@ export default function AuthButton() {
   // ログイン済みの場合
   if (session) {
     return (
-      <div className="flex items-center gap-2">
-        <span className="text-sm text-slate-600">
+      <div className="flex min-w-0 shrink-0 items-center gap-2">
+        <span className="hidden max-w-48 truncate text-sm text-slate-600 sm:inline">
           {session.user.email}
         </span>
 
         <button
           type="button"
           onClick={handleLogout}
-          className="rounded bg-slate-800 px-3 py-1.5 text-sm text-white"
+          className="shrink-0 whitespace-nowrap rounded bg-slate-800 px-3 py-1.5 text-sm text-white"
         >
           ログアウト
         </button>

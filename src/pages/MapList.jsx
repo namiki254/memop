@@ -790,6 +790,11 @@ const [copied, setCopied] = useState(false);
   return (
 
     <div className="h-full overflow-auto bg-[#fffaf5] p-6">
+      {copied && (
+        <div className="fixed right-4 top-16 z-50 rounded-lg bg-emerald-600 px-3 py-2 text-sm font-medium text-white shadow-lg">
+          コピーしました
+        </div>
+      )}
       <MoveMapModal
         map={movingMap}
         folders={allFolders}
@@ -818,23 +823,22 @@ const [copied, setCopied] = useState(false);
         ))}
       </p>
 
-      <div className="mt-1 flex items-center justify-between">
+      <div className="mt-1 flex flex-col items-stretch gap-2 lg:flex-row lg:items-center lg:justify-between">
         {folder && isEditingFolder ? (
           <input
             type="text"
             value={editingFolderName}
             onChange={(e) => setEditingFolderName(e.target.value)}
             maxLength={100}
-            className="rounded border border-slate-300 px-3 py-1.5 text-2xl font-bold text-slate-800"
+            className="w-full min-w-0 rounded border border-slate-300 px-3 py-1.5 text-2xl font-bold text-slate-800 lg:flex-1"
           />
         ) : (
-          <h2 className="text-2xl font-bold text-slate-800">
+          <h2 className="w-full min-w-0 break-words text-2xl font-bold text-slate-800 lg:flex-1">
             {folder ? folder.name : "マップ一覧"}
           </h2>
         )}
 
-        {/* 右側のボタンエリア */}
-        <div className="flex items-center gap-2">
+        <div className="flex w-full flex-wrap items-center gap-2 lg:w-auto lg:shrink-0 lg:justify-end">
           {/* フォルダ画面でだけ保存ボタンを表示する（作成者本人には内部で非表示になる） */}
           {authChecked && folder && (
             <SaveToMyListButton
@@ -845,19 +849,13 @@ const [copied, setCopied] = useState(false);
             />
           )}
 
-          {/* フォルダ内だけURLコピーボタンを表示 */}
+          {/* フォルダ階層（folderIdがあるとき）のみ「URLをコピー」ボタンを表示 */}
           {folderId && (
             <div className="flex items-center gap-2">
-              {copied && (
-                <span className="text-sm font-medium text-emerald-600">
-                  コピーしました
-                </span>
-              )}
-
               <button
                 type="button"
                 onClick={copyFolderUrl}
-                className="rounded-md bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-700 hover:bg-slate-200"
+                className="shrink-0 whitespace-nowrap rounded-md bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-700 hover:bg-slate-200"
               >
                 フォルダのURLをコピー
               </button>
@@ -914,7 +912,7 @@ const [copied, setCopied] = useState(false);
           <button
             type="button"
             onClick={startCreatingFolder}
-            className="rounded border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
+            className="shrink-0 whitespace-nowrap rounded border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
           >
             ＋ 新しいフォルダ
           </button>

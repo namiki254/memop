@@ -51,10 +51,12 @@ export default function MapDetail() {
 
   // ピンのタイトル検索
   const [searchQuery, setSearchQuery] = useState("");
+  const [filtersOpen, setFiltersOpen] = useState(false);
 
   // 同じフォルダに入っている他のマップ（#65のフォルダ機能が前提）．
   // フォルダに入っていないマップ（folder_id が null）では空のまま．
   const [siblingMaps, setSiblingMaps] = useState([]);
+  const [siblingMapsOpen, setSiblingMapsOpen] = useState(false);
 
   // ボタン種類のピン（#67）の移動先として選べる，全マップの一覧．
   const [allMaps, setAllMaps] = useState([]);
@@ -81,6 +83,8 @@ export default function MapDetail() {
   const [mapIsPublic, setMapIsPublic] = useState(true); // 追加
   const [savingMap, setSavingMap] = useState(false);
   const [mapError, setMapError] = useState("");
+
+
 
   //PIN_TIPESからvalueだけを取り出す
   const fixedTypeValues = new Set(
@@ -783,11 +787,32 @@ export default function MapDetail() {
     );
   }
 
+  const backHref = map.folder_id
+    ? `/folders/${map.folder_id}`
+    : "/";
+
+  const backLabel = map.folder_id
+    ? "フォルダに戻る"
+    : "マップ一覧に戻る";
+
+  // 他人の非公開マップを除外したフォルダ内マップ一覧
+  const visibleSiblingMaps = siblingMaps.filter(
+    (sibling) => sibling.is_public || sibling.user_id === currentUser?.id,
+  );
+
   return (
 
-    <div className="flex h-full">
+    <div className="relative flex h-full min-w-0 bg-rose-100">
       <div className="flex h-full min-w-0 flex-1 flex-col">
-        <div className="border-b border-slate-200 px-6 py-3">
+        <div className="border-b border-rose-200 bg-white px-4 py-3 sm:px-6">
+          <Link
+            to={backHref}
+            className="mb-2 inline-flex items-center gap-1 text-sm font-medium text-rose-600 hover:underline"
+          >
+            <span aria-hidden="true">←</span>
+            {backLabel}
+          </Link>
+
           {/* パンくずリスト */}
           <p className="mb-2 text-sm text-slate-500">
             <Link to="/" className="hover:underline">
@@ -871,20 +896,20 @@ export default function MapDetail() {
           ) : (
             <>
               {/* タイトルとボタン類を横並びにするためにflexを使用 */}
-              <div className="flex items-center justify-between gap-2">
-
-                {/* タイトルとバッジをセットでまとめるグループ */}
-                <div className="flex items-center gap-2">
-                  <h2 className="text-lg font-bold text-slate-800">{map.title}</h2>
+              <div className="flex flex-col items-start gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex w-full min-w-0 flex-wrap items-center gap-2 sm:w-auto sm:flex-1">
+                  <h2 className="min-w-0 break-words text-lg font-bold text-slate-800">
+                    {map.title}
+                  </h2>
 
                   {/* 公開/非公開バッジ */}
-                  <span className={`rounded-md px-3 py-1.5 text-sm font-medium ${map.is_public ? "bg-slate-100 text-slate-700" : "bg-amber-100 text-amber-800"
+                  <span className={`shrink-0 rounded-md px-3 py-1.5 text-sm font-medium ${map.is_public ? "bg-slate-100 text-slate-700" : "bg-amber-100 text-amber-800"
                     }`}>
                     {map.is_public ? "公開" : "非公開"}
                   </span>
                 </div>
 
-                <div className="flex shrink-0 items-center gap-2">
+                <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:shrink-0 sm:justify-end">
                   <SaveToMyListButton
                     itemType="map"
                     itemId={map.id}
@@ -904,6 +929,19 @@ export default function MapDetail() {
                   >
                     マップのURLをコピー
                   </button>
+
+                  {visibleSiblingMaps.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setSiblingMapsOpen((current) => !current)}
+                      aria-expanded={siblingMapsOpen}
+                      className="shrink-0 whitespace-nowrap rounded-md border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                    >
+                      {siblingMapsOpen
+                        ? "フォルダ内マップを閉じる"
+                        : `フォルダ内マップ（${visibleSiblingMaps.length}）`}
+                    </button>
+                  )}
 
                   {canEditMap && (
                     <button
@@ -938,61 +976,86 @@ export default function MapDetail() {
           )}
 
           {/* ピンの種類ごとの表示・非表示の切替，タイトル検索 */}
-          <div className="mt-3 flex flex-wrap items-center gap-3 border-t border-slate-100 pt-3">
-            <div className="flex items-center gap-2 mr-2">
-              <span className="text-xs font-semibold text-slate-600">
-                タイトル検索:
+          {/* ピンのタイトル検索と表示フィルター */}
+          <div className="mt-3 border-t border-slate-100 pt-3">
+            <button
+              type="button"
+              onClick={() => setFiltersOpen((current) => !current)}
+              aria-expanded={filtersOpen}
+              aria-controls="map-filters"
+              className="flex w-full items-center justify-between rounded-md bg-slate-50 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 sm:w-auto"
+            >
+              <span>検索・表示フィルタ</span>
+              <span aria-hidden="true" className="ml-3">
+                {filtersOpen ? "▲" : "▼"}
               </span>
-              <input
-                type="text"
-                placeholder="ピンを検索..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="rounded-md border border-slate-300 px-2.5 py-1 text-xs focus:border-blue-500 focus:outline-none"
-              />
-            </div>
+            </button>
 
-            <span className="text-xs font-semibold text-slate-600">
-              表示フィルタ:
-            </span>
+            {filtersOpen && (
+              <div id="map-filters" className="mt-3 space-y-4">
+                <label className="block">
+                  <span className="block text-xs font-semibold text-slate-600">
+                    タイトル検索
+                  </span>
 
-            {/* 一括選択、解除 */}
-            <div className="flex items-center gap-1.5 mr-2">
-              <button
-                type="button"
-                onClick={handleSelectAll}
-                className="text-xs text-blue-600 hover:underline"
-              >
-                すべてオン
-              </button>
-              <span className="text-xs text-slate-300">|</span>
-              <button
-                type="button"
-                onClick={handleDeselectAll}
-                className="text-xs text-blue-600 hover:underline"
-              >
-                すべてオフ
-              </button>
-            </div>
+                  <input
+                    type="text"
+                    placeholder="ピンを検索..."
+                    value={searchQuery}
+                    onChange={(event) => setSearchQuery(event.target.value)}
+                    className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none sm:max-w-xs"
+                  />
+                </label>
 
-            {availablePinTypes.map((type) => (
-              <label
-                key={type.value}
-                className="flex items-center gap-1.5 text-xs text-slate-700 cursor-pointer select-none"
-              >
-                <input
-                  type="checkbox"
-                  checked={isTypeEnabled(type.value)}
-                  onChange={() => handleTypeToggle(type.value)}
-                  className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-                />
-                <span className="max-w-[8rem] truncate">
-                  {type.isCustom
-                    ? type.label
-                    : `${type.emoji}: ${type.label}`}
-                </span>
-              </label>
-            ))}
+                <div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-xs font-semibold text-slate-600">
+                      表示フィルタ
+                    </span>
+
+                    <button
+                      type="button"
+                      onClick={handleSelectAll}
+                      className="text-xs text-blue-600 hover:underline"
+                    >
+                      すべてオン
+                    </button>
+
+                    <span className="text-xs text-slate-300">|</span>
+
+                    <button
+                      type="button"
+                      onClick={handleDeselectAll}
+                      className="text-xs text-blue-600 hover:underline"
+                    >
+                      すべてオフ
+                    </button>
+                  </div>
+
+                  <div className="mt-2 flex flex-wrap gap-x-4 gap-y-2">
+                    {availablePinTypes.map((type) => (
+                      <label
+                        key={type.value}
+                        className="flex cursor-pointer items-center gap-1.5 text-xs text-slate-700"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={isTypeEnabled(type.value)}
+                          onChange={() => handleTypeToggle(type.value)}
+                          className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                        />
+
+                        <span className="max-w-[8rem] truncate">
+                          {type.isCustom
+                            ? type.label
+                            : `${type.emoji}: ${type.label}`}
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
           <p className="mt-1 text-xs text-slate-400">
@@ -1037,18 +1100,46 @@ export default function MapDetail() {
           />
         )}
       </div>
-      {/* 同じフォルダの他マップへの切り替え．フォルダに入っていないマップでは出さない． */}
-      {/* 他人の非公開マップを除外したフィルタリング処理 */}
-      {(() => {
-        const visibleSiblingMaps = siblingMaps.filter(
-          (sibling) => sibling.is_public || sibling.user_id === currentUser?.id
-        );
+      {/* 同じフォルダの他マップへの切り替え．フォルダに入っていないマップでは出さない．
+          他人の非公開マップは visibleSiblingMaps の時点で除外済み． */}
+      {siblingMapsOpen && visibleSiblingMaps.length > 0 && (
+        <>
+          {/* スマホでは一覧の後ろを暗くする */}
+          <button
+            type="button"
+            aria-label="フォルダ内マップの一覧を閉じる"
+            onClick={() => setSiblingMapsOpen(false)}
+            className="absolute inset-0 z-20 bg-transparent sm:hidden"
+          />
 
-        if (visibleSiblingMaps.length === 0) return null;
+          <aside
+            className="
+        absolute inset-y-0 right-0 z-30
+        w-64 overflow-auto
+        border-l border-slate-200
+        bg-white p-3
+        shadow-xl
 
-        return (
-          <aside className="w-48 shrink-0 overflow-auto border-l border-slate-200 p-3">
-            <p className="text-xs font-bold text-slate-400">同じフォルダのマップ</p>
+        sm:static
+        sm:w-48
+        sm:shrink-0
+        sm:shadow-none
+      "
+          >
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-xs font-bold text-slate-400">
+                同じフォルダのマップ
+              </p>
+
+              <button
+                type="button"
+                onClick={() => setSiblingMapsOpen(false)}
+                className="shrink-0 text-xs text-slate-500 underline"
+              >
+                閉じる
+              </button>
+            </div>
+
             <ul className="mt-2 space-y-1">
               {visibleSiblingMaps.map((sibling) => {
                 const isActive = sibling.id === map.id;
@@ -1083,8 +1174,8 @@ export default function MapDetail() {
               })}
             </ul>
           </aside>
-        );
-      })()}
+        </>
+      )}
     </div>
   );
 }
