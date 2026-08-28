@@ -49,6 +49,9 @@ export default function MapList() {
   const [creatingFolder, setCreatingFolder] = useState(false);
   const [folderError, setFolderError] = useState("");
 
+  // URLコピー完了メッセージの表示状態
+  const [copied, setCopied] = useState(false);
+
   // マップ・フォルダを名前で検索する．
   // 通信は増やさず，すでに取得済みの maps / childFolders を絞り込むだけ．
   const [searchQuery, setSearchQuery] = useState("");
@@ -57,17 +60,17 @@ export default function MapList() {
 
   const visibleMaps = trimmedQuery
     ? maps.filter((map) =>
-        normalizeSearchText(map.title).includes(normalizedQuery),
-      )
+      normalizeSearchText(map.title).includes(normalizedQuery),
+    )
     : maps;
   const visibleFolders = trimmedQuery
     ? childFolders.filter((f) =>
-        normalizeSearchText(f.name).includes(normalizedQuery),
-      )
+      normalizeSearchText(f.name).includes(normalizedQuery),
+    )
     : childFolders;
   const isEmpty = visibleFolders.length === 0 && visibleMaps.length === 0;
 
-// 現在ログインしているユーザーを取得する
+  // 現在ログインしているユーザーを取得する
   useEffect(() => {
     async function loadCurrentUser() {
       const {
@@ -92,7 +95,7 @@ export default function MapList() {
       subscription.unsubscribe();
     };
   }, []);
-  
+
   useEffect(() => {
     let cancelled = false;
 
@@ -115,7 +118,7 @@ export default function MapList() {
           setBreadcrumb([]);
           setChildFolders([]);
           setMaps([]);
-        return;
+          return;
         }
 
         // 今のフォルダ自身と，そこから親をたどってパンくずを組み立てる．
@@ -163,7 +166,7 @@ export default function MapList() {
           setFolderNotFound(true);
           return;
         }
-        
+
         // 移動先の選択欄に表示する、すべてのフォルダを取得する
         const { data: foldersForMove, error: foldersForMoveError } =
           await supabase
@@ -186,8 +189,8 @@ export default function MapList() {
         } else {
           // トップでは、自分が作ったフォルダだけ取得
           foldersQuery = foldersQuery
-          .is("parent_folder_id", null)
-          .eq("user_id", currentUser.id);
+            .is("parent_folder_id", null)
+            .eq("user_id", currentUser.id);
         }
 
         const { data: folders, error: foldersError } = await foldersQuery;
@@ -222,8 +225,8 @@ export default function MapList() {
 
             savedFolders = data ?? [];
           }
-      }
-        
+        }
+
         let mapsQuery = supabase
           .from("maps")
           .select("*")
@@ -399,8 +402,7 @@ export default function MapList() {
     } catch (unexpectedError) {
       console.error("マップの移動中に予期しないエラー", unexpectedError);
       setMoveError(
-        `予期しないエラーが発生しました。${
-          unexpectedError?.message ?? unexpectedError
+        `予期しないエラーが発生しました。${unexpectedError?.message ?? unexpectedError
         }`,
       );
     } finally {
@@ -494,6 +496,18 @@ export default function MapList() {
     window.location.reload();
   }
 
+  // コピー関数を追加
+  async function copyFolderUrl() {
+    setFolderError(""); // 過去のエラーメッセージをクリア
+    try {
+      await navigator.clipboard.writeText(window.location.href);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (error) {
+      setFolderError(`URLのコピーに失敗しました. ${error.message}`);
+    }
+  }
+
   if (loading) {
     return <Loading />;
   }
@@ -561,13 +575,35 @@ export default function MapList() {
         <h2 className="text-2xl font-bold text-slate-800">
           {folder ? folder.name : "マップ一覧"}
         </h2>
-        <button
-          type="button"
-          onClick={startCreatingFolder}
-          className="rounded border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
-        >
-          ＋ 新しいフォルダ
-        </button>
+
+        {/* 右側のボタンエリア */}
+        <div className="flex items-center gap-2">
+          {/* フォルダ階層（folderIdがあるとき）のみ「URLをコピー」ボタンを表示 */}
+          {folderId && (
+            <div className="flex items-center gap-2">
+              {copied && (
+                <span className="text-sm font-medium text-emerald-600">
+                  コピーしました
+                </span>
+              )}
+              <button
+                type="button"
+                onClick={copyFolderUrl}
+                className="rounded border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
+              >
+                このフォルダのURLをコピー
+              </button>
+            </div>
+          )}
+
+          <button
+            type="button"
+            onClick={startCreatingFolder}
+            className="rounded border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
+          >
+            ＋ 新しいフォルダ
+          </button>
+        </div>
       </div>
 
       {isCreatingFolder && (
@@ -673,14 +709,14 @@ export default function MapList() {
               {(f.user_id === null
                 ? Boolean(currentUser)
                 : currentUser?.id === f.user_id) && (
-                <button
-                  type="button"
-                  onClick={() => handleDeleteFolder(f)}
-                  className="text-xs text-red-600 hover:underline"
-                >
-                  削除
-                </button>
-              )}
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteFolder(f)}
+                    className="text-xs text-red-600 hover:underline"
+                  >
+                    削除
+                  </button>
+                )}
             </div>
           ))}
 
