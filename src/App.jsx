@@ -6,6 +6,7 @@ import MapDetail from "./pages/MapDetail.jsx";
 import AuthButton from "./components/AuthButton.jsx";
 // issue #28 用のテストページ追加
 import TestMapView from "./pages/TestMapView.jsx";
+import NotFound from "./pages/NotFound.jsx";
 
 /**
  * アプリ全体の入れ物．
@@ -101,6 +102,8 @@ export default function App() {
           <Route path="/maps/:id" element={<MapDetail />} />
           {/* issue #28 用のテストページ追加 */}
           <Route path="/test" element={<TestMapView />} />
+
+          <Route path="*" element={<NotFound />} />
         </Routes>
       </main>
     </div>

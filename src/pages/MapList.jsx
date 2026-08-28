@@ -32,6 +32,8 @@ export default function MapList() {
   const [breadcrumb, setBreadcrumb] = useState([]);
   const [childFolders, setChildFolders] = useState([]);
   const [maps, setMaps] = useState([]);
+  // 現在ログインしているユーザー
+  const [currentUser, setCurrentUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -58,6 +60,30 @@ export default function MapList() {
     : childFolders;
   const isEmpty = visibleFolders.length === 0 && visibleMaps.length === 0;
 
+// 現在ログインしているユーザーを取得する
+  useEffect(() => {
+    async function loadCurrentUser() {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      setCurrentUser(user);
+    }
+
+    loadCurrentUser();
+
+    // ログイン・ログアウトされたときもcurrentUserを更新する
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      setCurrentUser(session?.user ?? null);
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, []);
+  
   useEffect(() => {
     let cancelled = false;
 
@@ -162,9 +188,19 @@ export default function MapList() {
     setFolderError("");
 
     try {
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser();
+
+      if (userError || !user) {
+        setFolderError("フォルダを作成するにはログインしてください．");
+        return;
+      }
+
       const { data: created, error: insertError } = await supabase
         .from("folders")
-        .insert({ name, parent_folder_id: folderId ?? null })
+        .insert({ name, parent_folder_id: folderId ?? null, user_id: user.id })
         .select()
         .single();
 
@@ -185,6 +221,41 @@ export default function MapList() {
     } finally {
       setCreatingFolder(false);
     }
+  }
+
+  // フォルダを削除する
+  async function handleDeleteFolder(folder) {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (
+      folder.user_id !== null &&
+      user?.id !== folder.user_id
+    ) {
+      setFolderError("このフォルダは削除できません．");
+      return;
+    }
+
+    if (!window.confirm(`「${folder.name}」を削除しますか？`)) {
+      return;
+    }
+
+    const { error: deleteError } = await supabase
+      .from("folders")
+      .delete()
+      .eq("id", folder.id);
+
+    if (deleteError) {
+      console.error("フォルダの削除に失敗", deleteError);
+      setFolderError(`削除に失敗しました．${deleteError.message}`);
+      return;
+    }
+
+    setChildFolders((current) =>
+      current.filter((f) => f.id !== folder.id),
+    );
+    window.location.reload();
   }
 
   if (loading) {
@@ -295,9 +366,8 @@ export default function MapList() {
       ) : (
         <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {visibleFolders.map((f) => (
-            <Link
+            <div
               key={f.id}
-              to={`/folders/${f.id}`}
               className="
                 flex items-center gap-3
                 rounded-2xl
@@ -310,15 +380,33 @@ export default function MapList() {
                 hover:shadow-md
               "
             >
-              <span className="text-2xl">📁</span>
+              {/* フォルダ名をクリックするとフォルダを開く */}
+              <Link
+                to={`/folders/${f.id}`}
+                className="flex flex-1 items-center gap-3 hover:opacity-70"
+              >
+                <span className="text-2xl">📁</span>
 
-              <div>
-                <p className="font-bold text-[#3f3a3a]">{f.name}</p>
-                <p className="mt-0.5 text-xs text-amber-700/60">
-                  フォルダ
-                </p>
-              </div>
-            </Link>
+                <div>
+                  <p className="font-bold text-[#3f3a3a]">{f.name}</p>
+                  <p className="mt-0.5 text-xs text-amber-700/60">
+                    フォルダ
+                  </p>
+                </div>
+              </Link>
+
+              {/* 作成者だけ削除ボタンを表示する */}
+              {(f.user_id === null ||
+                currentUser?.id === f.user_id) && (
+                <button
+                  type="button"
+                  onClick={() => handleDeleteFolder(f)}
+                  className="text-xs text-red-600 hover:underline"
+                >
+                  削除
+                </button>
+              )}
+            </div>
           ))}
 
           {visibleMaps.map((map) => (
