@@ -97,6 +97,7 @@ export default function MapDetail() {
   const customTypeValues = [
     ...new Set(
       pins
+        .filter((pin) => pin.kind !== "button")
         .map((pin) => pin.pin_type)
         .filter(
           (pinType) =>
@@ -202,6 +203,11 @@ export default function MapDetail() {
   // ただし今まさに編集中のピンは，フィルタに一致しなくなっても地図上から消さない
   // （フィルタ変更でドラッグ対象が消えて操作できなくなるのを防ぐ）．
   const visiblePins = pins.filter((pin) => {
+    // 編集中のピンは、フィルターに関係なく表示し続ける
+    if (isEditingPin && pin.id === selectedPin?.id) {
+      return true;
+    }
+
     const displayType =
       pin.kind === "button"
         ? MAP_BUTTON_FILTER
@@ -209,10 +215,9 @@ export default function MapDetail() {
 
     const isTypeMatch = isTypeEnabled(displayType);
 
-    const title = pin?.title || "";
-    const isTitleMatch = title
-      .toLowerCase()
-      .includes(searchQuery.trim().toLowerCase());
+    const isTitleMatch = normalizeSearchText(pin?.title).includes(
+      normalizeSearchText(searchQuery.trim()),
+    );
 
     return isTypeMatch && isTitleMatch;
   });
@@ -472,7 +477,6 @@ export default function MapDetail() {
     setSelectedPin({ x, y });
   }
 
-  /** 既にあるピンがクリックされた．中身を表示する */
   /** ピンをクリックしたら詳細パネルを開く */
   function handlePinClick(pin) {
     setPinError("");
