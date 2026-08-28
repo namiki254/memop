@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import Loading from "../components/Loading";
 import ErrorMessage from "../components/ErrorMessage";
@@ -19,6 +19,7 @@ import MoveMapModal from "../components/MoveMapModal";
  */
 export default function MapList() {
   const { folderId } = useParams();
+  const navigate = useNavigate();
 
   // 今いるフォルダ自身．トップ階層のときは null．
   const [folder, setFolder] = useState(null);
@@ -639,7 +640,13 @@ export default function MapList() {
       return;
     }
 
-    window.location.reload();
+    // 削除したフォルダの親へ戻る。
+    // 親がない場合はホームへ戻る。
+    if (folder.parent_folder_id) {
+      navigate(`/folders/${folder.parent_folder_id}`);
+    } else {
+      navigate("/");
+    }
   }
 
   // マップのお気に入りを切り替える
