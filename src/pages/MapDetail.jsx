@@ -7,6 +7,7 @@ import { MapView } from "../components/MapView";
 import { PinPanel } from "../components/PinPanel";
 import { PIN_TYPES } from "../lib/pinTypes";
 import { normalizeSearchText } from "../lib/searchText";
+import SaveToMyListButton from "../components/SaveToMyListButton";
 
 /**
  * マップ詳細ページ．
@@ -204,9 +205,9 @@ export default function MapDetail() {
   const displayPins = visiblePins.map((pin) =>
     isEditingPin && pin.id === selectedPin?.id
       ? {
-          ...selectedPin,
-          ...pendingPinAppearance,
-        }
+        ...selectedPin,
+        ...pendingPinAppearance,
+      }
       : pin
   );
   // マップとピンを取得する
@@ -337,29 +338,29 @@ export default function MapDetail() {
       setCurrentUser(user);
     }
 
-       
-  loadCurrentUser();
 
-  //ログイン状態の監視
-  const {
-    data: { subscription },
-  } = supabase.auth.onAuthStateChange((_event, newSession) => {
-    setCurrentUser(newSession?.user ?? null);
+    loadCurrentUser();
 
-    // 操作中にログアウトした場合はパネルを閉じる
-    if (!newSession) {
-      setSelectedPin(null);
-      setIsEditingPin(false);
-    }
-  });
+    //ログイン状態の監視
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, newSession) => {
+      setCurrentUser(newSession?.user ?? null);
 
-  //ページを離れたら監視を中止
-  return () => {
-    subscription.unsubscribe();
-  };
+      // 操作中にログアウトした場合はパネルを閉じる
+      if (!newSession) {
+        setSelectedPin(null);
+        setIsEditingPin(false);
+      }
+    });
 
-  },[]);
-  
+    //ページを離れたら監視を中止
+    return () => {
+      subscription.unsubscribe();
+    };
+
+  }, []);
+
 
 
   // 他の人が置いた・書き直した・消したピンを，リロードなしで反映する．
@@ -407,7 +408,7 @@ export default function MapDetail() {
   /** 画像の何もない場所がクリックされた．そこに新しいピンを作る準備をする */
   async function handleMapClick(x, y) {
     setPinError("");
-    
+
     // 現在ログインしているユーザーを確認する
     const {
       data: { user },
@@ -621,7 +622,7 @@ export default function MapDetail() {
       const {
         data: { user },
         error: userError,
-        } = await supabase.auth.getUser();
+      } = await supabase.auth.getUser();
 
       if (userError || !user || !canEditPin(selectedPin, user.id)) {
         setPinError("このピンは編集できません．");
@@ -785,52 +786,58 @@ export default function MapDetail() {
                 >
                   キャンセル
                 </button>
-            </div>
-          </form>
-        ) : (
-          <>
-            {/* タイトルとボタン類を横並びにするためにflexを使用 */}
-            <div className="flex items-center justify-between gap-2">
-              <h2 className="text-lg font-bold text-slate-800">{map.title}</h2>
-              <div className="flex shrink-0 gap-2">
-                <button
-                  onClick={copyUrl}
-                  className="rounded-md bg-slate-100 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-200"
-                >
-                  {copied ? "コピーしました！" : "このマップのURLをコピー"}
-                </button>
-                
-                {canEditMap && (
-                  <button
-                    onClick={startEditingMap}
-                    className="rounded-md border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
-                  >
-                    編集
-                  </button>
-                )}
-                {/* マップの削除は作成者だけができる */}
-                {canEditMap && (
-                  <button
-                    onClick={handleDeleteMap}
-                    disabled={savingMap}
-                    className="rounded-md border border-red-200 px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 disabled:opacity-50"
-                  >
-                    削除
-                  </button>
-                )}
               </div>
-            </div>
+            </form>
+          ) : (
+            <>
+              {/* タイトルとボタン類を横並びにするためにflexを使用 */}
+              <div className="flex items-center justify-between gap-2">
+                <h2 className="text-lg font-bold text-slate-800">{map.title}</h2>
+                <div className="flex shrink-0 gap-2">
+                  <SaveToMyListButton
+                    itemType="map"
+                    itemId={map.id}
+                    ownerId={map.user_id}
+                    currentUser={currentUser}
+                  />
+                  <button
+                    onClick={copyUrl}
+                    className="rounded-md bg-slate-100 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-200"
+                  >
+                    {copied ? "コピーしました！" : "このマップのURLをコピー"}
+                  </button>
 
-            {map.description && (
-              <p className="mt-1 text-sm text-slate-500">{map.description}</p>
-            )}
-            {mapError && (
-              <p className="mt-2 rounded bg-red-50 p-2 text-sm text-red-700">
-                {mapError}
-              </p>
-            )}
-          </>
-        )}
+                  {canEditMap && (
+                    <button
+                      onClick={startEditingMap}
+                      className="rounded-md border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                    >
+                      編集
+                    </button>
+                  )}
+                  {/* マップの削除は作成者だけができる */}
+                  {canEditMap && (
+                    <button
+                      onClick={handleDeleteMap}
+                      disabled={savingMap}
+                      className="rounded-md border border-red-200 px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 disabled:opacity-50"
+                    >
+                      削除
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {map.description && (
+                <p className="mt-1 text-sm text-slate-500">{map.description}</p>
+              )}
+              {mapError && (
+                <p className="mt-2 rounded bg-red-50 p-2 text-sm text-red-700">
+                  {mapError}
+                </p>
+              )}
+            </>
+          )}
 
           {/* ピンの種類ごとの表示・非表示の切替，タイトル検索 */}
           <div className="mt-3 flex flex-wrap items-center gap-3 border-t border-slate-100 pt-3">
@@ -941,11 +948,10 @@ export default function MapDetail() {
               <li key={sibling.id}>
                 <Link
                   to={`/maps/${sibling.id}`}
-                  className={`block truncate rounded px-2 py-1.5 text-sm ${
-                    sibling.id === map.id
-                      ? "bg-slate-800 text-white"
-                      : "text-slate-700 hover:bg-slate-100"
-                  }`}
+                  className={`block truncate rounded px-2 py-1.5 text-sm ${sibling.id === map.id
+                    ? "bg-slate-800 text-white"
+                    : "text-slate-700 hover:bg-slate-100"
+                    }`}
                 >
                   {sibling.title}
                 </Link>
