@@ -6,6 +6,7 @@ import MapDetail from "./pages/MapDetail.jsx";
 import AuthButton from "./components/AuthButton.jsx";
 // issue #28 用のテストページ追加
 import TestMapView from "./pages/TestMapView.jsx";
+import NotFound from "./pages/NotFound.jsx";
 
 /**
  * アプリ全体の入れ物．
@@ -44,9 +45,26 @@ export default function App() {
 
   return (
     <div className="flex h-screen flex-col">
-      <header className="flex items-center justify-between border-b border-slate-200 px-6 py-3">
-        <Link to="/" className="text-xl font-bold text-slate-800">
-          memop
+      <header
+        className="
+          flex items-center gap-6
+          border-b border-rose-100
+          bg-white/90
+          px-6 py-3
+          shadow-sm
+          backdrop-blur
+        "
+      >
+        <Link
+          to="/"
+          className="
+            mr-auto
+            text-2xl font-black
+            tracking-tight
+            text-rose-400
+          "
+        >
+          めもっぷ
         </Link>
 
         {/* issue #28 用のテストページへのリンク（確認後消してOK）*/}
@@ -57,7 +75,18 @@ export default function App() {
         <button
           type="button"
           onClick={handleNewMap}
-          className="rounded bg-slate-800 px-3 py-1.5 text-sm text-white"
+          className="
+            rounded-full
+            bg-rose-400
+            px-4 py-2
+            text-sm font-bold
+            text-white
+            shadow-sm
+            transition
+            hover:-translate-y-0.5
+            hover:bg-rose-500
+            hover:shadow-md
+          "
         >
           新しいマップ
         </button>
@@ -73,6 +102,8 @@ export default function App() {
           <Route path="/maps/:id" element={<MapDetail />} />
           {/* issue #28 用のテストページ追加 */}
           <Route path="/test" element={<TestMapView />} />
+
+          <Route path="*" element={<NotFound />} />
         </Routes>
       </main>
     </div>

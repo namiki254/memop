@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import { PIN_TYPES, getPinEmoji } from "../lib/pinTypes";
-// 追加
 import { renderTextWithLinks } from "../lib/linkify";
 
 /**
@@ -24,6 +23,18 @@ import { renderTextWithLinks } from "../lib/linkify";
  * kind が "button" のピンは，メモの代わりに「押すと別のマップへ移動する」
  * 動作を持つ．押したときの実際の移動処理は MapDetail.jsx 側（#67）で行う．
  */
+// HTMLのmaxLengthはUTF-16のコード単位数で数えるため，家族・カップル等の
+// 複数コードポイントからなる絵文字（ZWJ結合絵文字）が入力途中で分断され，
+// 壊れた見た目になることがある．書記素クラスタ単位で数えて切り詰める．
+function truncateToGraphemes(value, maxLength) {
+  if (typeof Intl !== "undefined" && Intl.Segmenter) {
+    const segmenter = new Intl.Segmenter(undefined, { granularity: "grapheme" });
+    const segments = Array.from(segmenter.segment(value), (s) => s.segment);
+    return segments.slice(0, maxLength).join("");
+  }
+  return Array.from(value).slice(0, maxLength).join("");
+}
+
 export function PinPanel({
   pin,
   currentUser,
@@ -42,8 +53,12 @@ export function PinPanel({
 }) {
   const isNew = !pin?.id;
 
-  // 今ログインしている人が、このピンの作成者かどうか
-  const isOwner = currentUser?.id === pin?.user_id;
+  // このピンを編集・削除できるか．
+  // 持ち主なし（user_id が null）のピンは，ログイン済みなら誰でも編集・削除できる
+  // （MapDetail.jsx の canEditPin と同じ扱い．マップ・フォルダの「持ち主なし」仕様に合わせている）．
+  const isOwner = pin?.user_id === null
+    ? Boolean(currentUser)
+    : currentUser?.id === pin?.user_id;
 
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
@@ -96,7 +111,7 @@ export function PinPanel({
   }, [linkMapId, firstMapOptionId]);
 
   useEffect(() => {
-    if (!isNew) return;
+    if (!isNew && !isEditing) return;
 
     const previewPinType =
       pinType === "custom"
@@ -107,7 +122,7 @@ export function PinPanel({
       kind,
       pin_type: previewPinType,
     });
-  }, [isNew, kind, pinType, customPinType, onPreviewChange]);
+  }, [isNew, isEditing, kind, pinType, customPinType, onPreviewChange]);
 
   // 新規作成（onSave）と更新（onUpdate）を切り替える
   function handleSubmit(event) {
@@ -158,7 +173,24 @@ export function PinPanel({
   }
 
   return (
-    <div className="fixed inset-x-0 bottom-0 z-10 border-t border-slate-200 bg-white p-4 shadow-lg sm:inset-x-auto sm:right-4 sm:bottom-4 sm:w-80 sm:rounded sm:border">
+    <div
+      className="
+        fixed inset-x-0 bottom-0 z-40
+        max-h-[85dvh] overflow-y-auto
+        rounded-t-3xl
+        border-t border-rose-100
+        bg-white
+        p-5
+        shadow-xl
+
+        sm:inset-x-auto
+        sm:right-5
+        sm:bottom-5
+        sm:w-80
+        sm:rounded-3xl
+        sm:border
+      "
+    >
       {/* フォームを表示する条件にisEditingも追加 */}
       {isNew || isEditing ? ( // ★ isEditing も追加
         <form onSubmit={handleSubmit}>
@@ -185,10 +217,10 @@ export function PinPanel({
               onClick={() => setKind("pin")}
               disabled={saving}
               aria-pressed={kind === "pin"}
-              className={`rounded-full border px-2.5 py-1 text-xs disabled:opacity-50 ${
+              className={`rounded-full border px-3 py-1.5 text-xs font-bold transition disabled:opacity-50 ${
                 kind === "pin"
-                  ? "border-slate-800 bg-slate-800 text-white"
-                  : "border-slate-300 text-slate-600"
+                  ? "border-[#F47281] bg-[#FFF0F1] text-[#C95765]"
+                  : "border-rose-100 bg-white text-[#817878] hover:bg-rose-50"
               }`}
             >
               📍 メモ
@@ -198,13 +230,13 @@ export function PinPanel({
               onClick={() => setKind("button")}
               disabled={saving}
               aria-pressed={kind === "button"}
-              className={`rounded-full border px-2.5 py-1 text-xs disabled:opacity-50 ${
+              className={`rounded-full border px-3 py-1.5 text-xs font-bold transition disabled:opacity-50 ${
                 kind === "button"
-                  ? "border-slate-800 bg-slate-800 text-white"
-                  : "border-slate-300 text-slate-600"
+                  ? "border-[#7DCDB5] bg-[#EDF9F5] text-[#3E8D77]"
+                  : "border-rose-100 bg-white text-[#817878] hover:bg-rose-50"
               }`}
             >
-              🔗 ボタン
+              🔗 マップ移動
             </button>
           </div>
 
@@ -225,7 +257,20 @@ export function PinPanel({
                 ? "ボタンの名前（例：ララポートへ）"
                 : "タイトル（例：おすすめのカフェ）"
             }
-            className="mt-2 w-full rounded border border-slate-300 px-3 py-2 text-sm disabled:bg-slate-100"
+            className="mt-2
+            w-full
+            border
+            rounded-xl
+            border-rose-100
+            bg-rose-50/30
+            focus:border-rose-300
+            focus:ring-4
+            focus:ring-rose-100
+            outline-none
+            px-3
+            py-2
+            text-sm
+            disabled:bg-slate-100"
           />
 
           {kind === "button" ? (
@@ -238,7 +283,7 @@ export function PinPanel({
                 value={linkMapId}
                 onChange={(e) => setLinkMapId(e.target.value)}
                 disabled={saving}
-                className="mt-2 w-full rounded border border-slate-300 px-3 py-2 text-sm disabled:bg-slate-100"
+                className="mt-2 w-full rounded-xl border border-rose-100 bg-rose-50/30 px-3 py-2 text-sm outline-none focus:border-rose-300 focus:ring-4 focus:ring-rose-100 disabled:bg-stone-100"
               >
                 {mapOptions.map((option) => (
                   <option key={option.id} value={option.id}>
@@ -256,7 +301,7 @@ export function PinPanel({
                 maxLength={500}
                 rows={3}
                 placeholder="メモ（任意）"
-                className="mt-2 w-full rounded border border-slate-300 px-3 py-2 text-sm disabled:bg-slate-100"
+                className="mt-2 w-full rounded-xl border border-rose-100 bg-rose-50/30 px-3 py-2 text-sm outline-none focus:border-rose-300 focus:ring-4 focus:ring-rose-100 disabled:bg-stone-100"
               />
 
               <div className="mt-2 flex flex-wrap gap-1.5">
@@ -267,10 +312,11 @@ export function PinPanel({
                     onClick={() => setPinType(type.value)}
                     disabled={saving}
                     aria-pressed={pinType === type.value}
-                    className={`rounded-full border px-2.5 py-1 text-xs disabled:opacity-50 ${type.value === pinType
-                      ? "border-slate-800 bg-slate-800 text-white"
-                      : "border-slate-300 text-slate-600"
-                      }`}
+                    className={`rounded-full border px-2.5 py-1 text-xs font-medium transition disabled:opacity-50 ${
+                      type.value === pinType
+                        ? "border-[#F47281] bg-[#FFF0F1] text-[#C95765]"
+                        : "border-rose-100 bg-white text-[#817878] hover:bg-rose-50"
+                    }`}
                   >
                     {type.emoji} {type.label}
                   </button>
@@ -295,11 +341,21 @@ export function PinPanel({
                 <input
                   type="text"
                   value={customPinType}
-                  onChange={(e) => setCustomPinType(e.target.value)}
+                  onChange={(e) => {
+                    // 日本語入力（IME）の変換中に強制的に値を書き換えると，
+                    // 変換候補ウィンドウが崩れることがあるため，変換確定後にだけ切り詰める．
+                    if (e.nativeEvent.isComposing) {
+                      setCustomPinType(e.target.value);
+                      return;
+                    }
+                    setCustomPinType(truncateToGraphemes(e.target.value, 4));
+                  }}
+                  onCompositionEnd={(e) =>
+                    setCustomPinType(truncateToGraphemes(e.target.value, 4))
+                  }
                   disabled={saving}
-                  maxLength={4}
                   placeholder="例：🐱 / 猫"
-                  className="mt-2 w-full rounded border border-slate-300 px-3 py-2 text-sm disabled:bg-slate-100"
+                  className="mt-2 w-full rounded-xl border border-rose-100 bg-rose-50/30 px-3 py-2 text-sm outline-none focus:border-rose-300 focus:ring-4 focus:ring-rose-100 disabled:bg-stone-100"
                 />
               )}
             </>
@@ -321,7 +377,7 @@ export function PinPanel({
                 pinType === "custom" &&
                 customPinType.trim() === "")
             }
-            className="mt-3 w-full rounded bg-slate-800 px-4 py-2 text-sm text-white disabled:cursor-not-allowed disabled:bg-slate-300"
+            className="mt-4 w-full rounded-full bg-[#F47281] px-4 py-2.5 text-sm font-bold text-white hover:bg-[#E95F70] disabled:bg-stone-300"
           >
             {/* {saving ? "保存中..." : "このピンを保存"} */}
             {/* 保存ボタンのテキストを切り替える */}
@@ -342,7 +398,7 @@ export function PinPanel({
       ) : (
         <div>
           <div className="flex items-start justify-between gap-3">
-            <p className="font-bold break-words text-slate-800">
+            <p className="font-bold break-words text-[#3F3A3A]">
               {pin.kind === "button" ? "🔗" : getPinEmoji(pin.pin_type)}{" "}
               {pin.title}
             </p>
@@ -391,7 +447,7 @@ export function PinPanel({
                 type="button"
                 onClick={onDelete}
                 disabled={saving}
-                className="rounded border border-red-200 px-3 py-1.5 text-xs text-red-600 hover:bg-red-50 disabled:opacity-50"
+                className="rounded border border-red-200 px-3 py-1.5 text-xs text-[#C95765] hover:bg-red-50 disabled:opacity-50"
               >
                 削除
               </button>

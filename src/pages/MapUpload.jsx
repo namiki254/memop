@@ -311,26 +311,46 @@ export default function MapUpload() {
         </div>
 
         <div>
-          <label
-            htmlFor="image"
-            className="block text-sm font-medium text-slate-700"
-          >
+          <p className="text-sm font-bold text-[#685F5D]">
             マップにする画像
-          </label>
-          {/* accept は「選択ダイアログで何を出すか」のヒント．
-              スマホでカメラを使えるように image/* にしてある．
-              実際に受け付けるかどうかは handleFileChange で判定する． */}
-          <input
-            id="image"
-            ref={fileInputRef}
-            type="file"
-            accept="image/*"
-            onChange={handleFileChange}
-            disabled={submitting}
-            className="mt-1 w-full text-sm text-slate-600 disabled:opacity-50"
-          />
-          <p className="mt-1 text-xs text-slate-500">
-            PNG・JPEG・WebP・GIF，10MBまで
+          </p>
+
+          <div className="mt-2 rounded-2xl border-2 border-dashed border-rose-200 bg-rose-50/40 p-4 text-center">
+            <input
+              id="image"
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              onChange={handleFileChange}
+              disabled={submitting}
+              className="sr-only"
+            />
+
+            <label
+              htmlFor="image"
+              className={`inline-flex items-center justify-center gap-2 rounded-full bg-[#F47281] px-5 py-2.5 text-sm font-bold text-white shadow-sm transition ${
+                submitting
+                  ? "cursor-not-allowed opacity-50"
+                  : "cursor-pointer hover:bg-[#E95F70] hover:shadow-md"
+              }`}
+            >
+              <span aria-hidden="true">🖼️</span>
+              {file ? "別の画像を選ぶ" : "画像ファイルを選ぶ"}
+            </label>
+
+            <p className="mt-3 break-all text-sm text-[#817878]">
+              {file ? (
+                <>
+                  <span aria-hidden="true">📎</span> {file.name}
+                </>
+              ) : (
+                "まだ画像は選択されていません"
+              )}
+            </p>
+          </div>
+
+          <p className="mt-1.5 text-xs text-[#9A908D]">
+            PNG・JPEG・WebP・GIF、10MBまで
           </p>
         </div>
 

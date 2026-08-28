@@ -8,6 +8,9 @@ export default function AuthButton() {
   // 現在のログイン状態を保持する
   const [session, setSession] = useState(null);
 
+  // ログイン処理中かどうか（連打による二重送信を防ぐ）
+  const [submitting, setSubmitting] = useState(false);
+
   // 画面を開いたときに現在のログイン状態を確認し、
   // その後のログイン・ログアウトの変化も監視する
   useEffect(() => {
@@ -28,31 +31,47 @@ export default function AuthButton() {
 
   // 入力されたメールアドレスにログイン用リンクを送信する
   async function handleLogin() {
-    const { error } = await supabase.auth.signInWithOtp({
-      email,
-    });
+    if (submitting) return;
+    setSubmitting(true);
 
-    if (error) {
-      alert("ログインメールの送信に失敗しました");
-      console.error(error);
-      return;
+    try {
+      const { error } = await supabase.auth.signInWithOtp({
+        email,
+      });
+
+      if (error) {
+        alert("ログインメールの送信に失敗しました");
+        console.error(error);
+        return;
+      }
+
+      alert("ログイン用のメールを送信しました");
+    } finally {
+      setSubmitting(false);
     }
-
-    alert("ログイン用のメールを送信しました");
   }
 
   //github ログイン
   async function handleGitHubLogin() {
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: "github",
-      options: {
-        redirectTo: window.location.origin,
-      },
-    });
+    if (submitting) return;
+    setSubmitting(true);
 
-    if (error) {
-      alert("GitHubログインに失敗しました");
-      console.error(error);
+    try {
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: "github",
+        options: {
+          redirectTo: window.location.origin,
+        },
+      });
+
+      if (error) {
+        alert("GitHubログインに失敗しました");
+        console.error(error);
+      }
+    } finally {
+      // 成功時はここに来る前にページ遷移するのが通常だが，
+      // ポップアップブロック等で遷移しないケースに備えて必ず戻す．
+      setSubmitting(false);
     }
   }
 
@@ -99,7 +118,8 @@ export default function AuthButton() {
       <button
         type="button"
         onClick={handleLogin}
-        className="rounded bg-slate-800 px-3 py-1.5 text-sm text-white"
+        disabled={submitting}
+        className="rounded bg-slate-800 px-3 py-1.5 text-sm text-white disabled:opacity-50"
       >
         ログイン
       </button>
@@ -107,7 +127,8 @@ export default function AuthButton() {
       <button
         type="button"
         onClick={handleGitHubLogin}
-        className="inline-flex items-center justify-center gap-2 rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-400 focus:ring-offset-2 active:scale-95"
+        disabled={submitting}
+        className="inline-flex items-center justify-center gap-2 rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-400 focus:ring-offset-2 active:scale-95 disabled:opacity-50"
       >
         <svg
           viewBox="0 0 24 24"
