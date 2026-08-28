@@ -768,7 +768,7 @@ export default function MapDetail() {
   return (
 
     <div className="flex h-full">
-      <div className="flex h-full flex-1 flex-col">
+      <div className="flex h-full min-w-0 flex-1 flex-col">
         <div className="border-b border-slate-200 px-6 py-3">
           {/* パンくずリスト */}
           <p className="mb-2 text-sm text-slate-500">
@@ -950,7 +950,7 @@ export default function MapDetail() {
           </p>
         </div>
 
-        <div className="min-h-0 flex-1">
+        <div className="min-h-0 min-w-0 flex-1 overflow-hidden">
           <MapView
             // マップを切り替えたときにズーム倍率(scale)をリセットするため，
             // マップごとに別インスタンスとして作り直す．
