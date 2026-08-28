@@ -28,6 +28,10 @@ export default function MapList() {
   const [maps, setMaps] = useState([]);
   // 現在ログインしているユーザー
   const [currentUser, setCurrentUser] = useState(null);
+  // ログイン確認（supabase.auth.getUser()）が完了したかどうか．
+  // これが true になるまでは，ログイン済みか未ログインか本当のところが分からないため，
+  // トップページで「ログインしてください」を早まって出さないようにする．
+  const [authChecked, setAuthChecked] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   // 指定されたフォルダIDが存在しない・循環参照している場合
@@ -71,6 +75,7 @@ export default function MapList() {
       } = await supabase.auth.getUser();
 
       setCurrentUser(user);
+      setAuthChecked(true);
     }
 
     loadCurrentUser();
@@ -80,6 +85,7 @@ export default function MapList() {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
       setCurrentUser(session?.user ?? null);
+      setAuthChecked(true);
     });
 
     return () => {
@@ -96,6 +102,22 @@ export default function MapList() {
       setFolderNotFound(false);
 
       try {
+        // トップページでは，ログイン確認が終わるまで判定を保留する．
+        // ここで判定してしまうと，実際はログイン済みの人にも一瞬
+        // 「ログインしてください」が表示されてしまう．
+        if (!folderId && !authChecked) {
+          return;
+        }
+
+        // トップページで非ログインの場合は一覧を表示しない
+        if (!folderId && !currentUser) {
+          setFolder(null);
+          setBreadcrumb([]);
+          setChildFolders([]);
+          setMaps([]);
+        return;
+        }
+
         // 今のフォルダ自身と，そこから親をたどってパンくずを組み立てる．
         // visited は循環参照（親をたどっていくと自分自身に戻ってきてしまう場合）を
         // 検知して無限ループを防ぐためのもの．通常は起こらないが，防御的に入れている．
@@ -153,41 +175,121 @@ export default function MapList() {
         if (foldersForMoveError) throw foldersForMoveError;
 
         // トップ階層なら parent_folder_id / folder_id が null のものだけ．
-        const { data: folders, error: foldersError } = folderId
-          ? await supabase
-              .from("folders")
-              .select("*")
-              .eq("parent_folder_id", folderId)
-              .order("name")
-          : await supabase
-              .from("folders")
-              .select("*")
-              .is("parent_folder_id", null)
-              .order("name");
+        let foldersQuery = supabase
+          .from("folders")
+          .select("*")
+          .order("name");
+
+        if (folderId) {
+          // 共有フォルダの中では、今まで通り子フォルダを取得
+          foldersQuery = foldersQuery.eq("parent_folder_id", folderId);
+        } else {
+          // トップでは、自分が作ったフォルダだけ取得
+          foldersQuery = foldersQuery
+          .is("parent_folder_id", null)
+          .eq("user_id", currentUser.id);
+        }
+
+        const { data: folders, error: foldersError } = await foldersQuery;
 
         if (cancelled) return;
         if (foldersError) throw foldersError;
 
-        const { data: mapsData, error: mapsError } = folderId
-          ? await supabase
-              .from("maps")
+        // トップでは、自分が保存したフォルダも取得する
+        let savedFolders = [];
+
+        if (!folderId) {
+          const { data: savedFolderRows, error: savedFoldersError } = await supabase
+            .from("saved_folders")
+            .select("folder_id")
+            .eq("user_id", currentUser.id);
+
+          if (cancelled) return;
+          if (savedFoldersError) throw savedFoldersError;
+
+          const savedFolderIds = (savedFolderRows ?? []).map(
+            (row) => row.folder_id,
+          );
+
+          if (savedFolderIds.length > 0) {
+            const { data, error: savedFolderDataError } = await supabase
+              .from("folders")
               .select("*")
-              .eq("folder_id", folderId)
-              .order("created_at", { ascending: false })
-          : await supabase
-              .from("maps")
-              .select("*")
-              .is("folder_id", null)
-              .order("created_at", { ascending: false });
+              .in("id", savedFolderIds);
+
+            if (cancelled) return;
+            if (savedFolderDataError) throw savedFolderDataError;
+
+            savedFolders = data ?? [];
+          }
+      }
+        
+        let mapsQuery = supabase
+          .from("maps")
+          .select("*")
+          .order("created_at", { ascending: false });
+
+        if (folderId) {
+          // 共有フォルダの中では、今まで通りそのフォルダのマップを取得
+          mapsQuery = mapsQuery.eq("folder_id", folderId);
+        } else {
+          // トップでは、自分が作ったマップだけ取得
+          mapsQuery = mapsQuery
+            .is("folder_id", null)
+            .eq("user_id", currentUser.id);
+        }
+
+        const { data: mapsData, error: mapsError } = await mapsQuery;
 
         if (cancelled) return;
         if (mapsError) throw mapsError;
 
+        // トップでは、自分が保存したマップも取得する
+        let savedMaps = [];
+
+        if (!folderId) {
+          const { data: savedMapRows, error: savedMapsError } = await supabase
+            .from("saved_maps")
+            .select("map_id")
+            .eq("user_id", currentUser.id);
+
+          if (cancelled) return;
+          if (savedMapsError) throw savedMapsError;
+
+          const savedMapIds = (savedMapRows ?? []).map((row) => row.map_id);
+
+          if (savedMapIds.length > 0) {
+            const { data, error: savedMapDataError } = await supabase
+              .from("maps")
+              .select("*")
+              .in("id", savedMapIds);
+
+            if (cancelled) return;
+            if (savedMapDataError) throw savedMapDataError;
+
+            savedMaps = data ?? [];
+          }
+        }
+
         setFolder(currentFolder);
         setBreadcrumb(crumbs);
-        setChildFolders(folders ?? []);
+
+        const mergedFolders = [...(folders ?? []), ...savedFolders];
+
+        const uniqueFolders = Array.from(
+          new Map(mergedFolders.map((folder) => [folder.id, folder])).values(),
+        );
+
+        setChildFolders(uniqueFolders);
         setAllFolders(foldersForMove ?? []);
-        setMaps(mapsData ?? []);
+
+        const mergedMaps = [...(mapsData ?? []), ...savedMaps];
+
+        const uniqueMaps = Array.from(
+          new Map(mergedMaps.map((map) => [map.id, map])).values(),
+        );
+
+        setMaps(uniqueMaps);
       } catch (fetchError) {
         if (!cancelled) {
           setError(fetchError);
@@ -205,7 +307,7 @@ export default function MapList() {
     return () => {
       cancelled = true;
     };
-  }, [folderId]);
+  }, [folderId, currentUser, authChecked]);
 
   function startCreatingFolder() {
     setFolderError("");
@@ -409,6 +511,17 @@ export default function MapList() {
             ホームに戻る
           </Link>
         </div>
+      </div>
+    );
+  }
+
+  if (!folderId && !currentUser) {
+    return (
+      <div className="h-full overflow-auto bg-[#fffaf5] p-6">
+        <h2 className="text-2xl font-bold text-slate-800">マップ一覧</h2>
+        <p className="mt-6 text-slate-500">
+          マップ一覧を見るにはログインしてください。
+        </p>
       </div>
     );
   }
