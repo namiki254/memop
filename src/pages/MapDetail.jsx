@@ -251,8 +251,14 @@ export default function MapDetail() {
       // マップがフォルダに入っている場合、親フォルダを順番にたどる
       const crumbs = [];
       let cursor = mapData.folder_id;
+      const visited = new Set();
 
       while (cursor) {
+        if (visited.has(cursor)) {
+          break;
+        }
+
+        visited.add(cursor);
         const { data: folderData, error: folderError } = await supabase
           .from("folders")
           .select("id, name, parent_folder_id")
