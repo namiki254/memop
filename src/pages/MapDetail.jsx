@@ -344,6 +344,7 @@ export default function MapDetail() {
       const { data, error: allMapsError } = await supabase
         .from("maps")
         .select("id, title")
+        .eq("is_public", true)   // is_publicがtrueのものだけを選択肢として取得
         .order("title");
 
       if (!allMapsError) {
@@ -448,11 +449,25 @@ export default function MapDetail() {
   }
 
   /** 既にあるピンがクリックされた．中身を表示する */
-  function handlePinClick(pin) {
-    // ボタンのピンは，押した瞬間に移動先のマップへ移る（パネルは開かない）．
-    // 移動先が消えている（link_map_id が無い）ときだけ，直せるようパネルを開く．
+  async function handlePinClick(pin) {
+    // ボタンのピンは，移動先が公開されているかチェックしてから遷移する
     if (pin.kind === "button") {
       if (pin.link_map_id) {
+        // 移動先のマップの最新の状態（存在するか、非公開化されていないか）を確認
+        const { data: targetMap } = await supabase
+          .from("maps")
+          .select("id, is_public")
+          .eq("id", pin.link_map_id)
+          .maybeSingle();
+
+        // 移動先マップが存在しない、または非公開（is_public = false）の場合
+        if (!targetMap || !targetMap.is_public) {
+          setPinError("移動先のマップが存在しないか、非公開に変更されたため移動できません．");
+          setSelectedPin(pin); // 修正・削除できるようにパネルを開く
+          return;
+        }
+
+        // チェックを通過したら安全に移動
         navigate(`/maps/${pin.link_map_id}`);
         return;
       }
