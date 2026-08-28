@@ -3,17 +3,10 @@ import { Link, useParams } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import Loading from "../components/Loading";
 import ErrorMessage from "../components/ErrorMessage";
-import MoveMapModal from "../components/MoveMapModal";
 
-//表記揺れを整える関数
-function normalizeSearchText(value) {
-  return String(value ?? "")
-    .normalize("NFKC")
-    .toLowerCase()
-    .replace(/[\u30A1-\u30F6]/g, (character) =>
-      String.fromCharCode(character.charCodeAt(0) - 0x60),
-    );
-}
+import { normalizeSearchText } from "../lib/searchText";
+
+import MoveMapModal from "../components/MoveMapModal";
 
 /**
  * マップ一覧ページ．
@@ -37,6 +30,8 @@ export default function MapList() {
   const [currentUser, setCurrentUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  // 指定されたフォルダIDが存在しない・循環参照している場合
+  const [folderNotFound, setFolderNotFound] = useState(false);
 
   // マップのフォルダ移動に使う状態
   const [allFolders, setAllFolders] = useState([]);
@@ -98,21 +93,43 @@ export default function MapList() {
     async function load() {
       setLoading(true);
       setError(null);
+      setFolderNotFound(false);
 
       try {
         // 今のフォルダ自身と，そこから親をたどってパンくずを組み立てる．
+        // visited は循環参照（親をたどっていくと自分自身に戻ってきてしまう場合）を
+        // 検知して無限ループを防ぐためのもの．通常は起こらないが，防御的に入れている．
         let currentFolder = null;
         const crumbs = [];
         let cursor = folderId;
+        const visited = new Set();
+        let notFound = false;
+
         while (cursor) {
+          if (visited.has(cursor)) {
+            notFound = true;
+            break;
+          }
+          visited.add(cursor);
+
           const { data, error: folderError } = await supabase
             .from("folders")
             .select("*")
             .eq("id", cursor)
-            .single();
+            .maybeSingle();
 
           if (cancelled) return;
-          if (folderError) throw folderError;
+
+          // 22P02 はIDの形式が不正なとき（例: /folders/abc123）．
+          // 「見つからなかった」と同じ扱いにする．
+          if (folderError && folderError.code !== "22P02") {
+            throw folderError;
+          }
+
+          if (!data) {
+            notFound = true;
+            break;
+          }
 
 
           if (!currentFolder) currentFolder = data;
@@ -120,6 +137,10 @@ export default function MapList() {
           cursor = data.parent_folder_id;
         }
 
+        if (notFound) {
+          setFolderNotFound(true);
+          return;
+        }
         
         // 移動先の選択欄に表示する、すべてのフォルダを取得する
         const { data: foldersForMove, error: foldersForMoveError } =
@@ -332,16 +353,18 @@ export default function MapList() {
     }
   }
 
-  // フォルダを削除する
+  // フォルダを削除する．
+  // user_id が null の「持ち主なし」フォルダは誰でも削除できる仕様だが，
+  // それでも未ログインの匿名ユーザーには許可しない．
   async function handleDeleteFolder(folder) {
     const {
       data: { user },
     } = await supabase.auth.getUser();
 
-    if (
-      folder.user_id !== null &&
-      user?.id !== folder.user_id
-    ) {
+    const canDelete =
+      folder.user_id === null ? Boolean(user) : user?.id === folder.user_id;
+
+    if (!canDelete) {
       setFolderError("このフォルダは削除できません．");
       return;
     }
@@ -350,10 +373,15 @@ export default function MapList() {
       return;
     }
 
-    const { error: deleteError } = await supabase
-      .from("folders")
-      .delete()
-      .eq("id", folder.id);
+    // RLSに加えて，クライアント側でも所有者条件を絞り込んでおく（多層防御）．
+    // ここは削除対象自身の user_id ではなく，今ログインしている人の id で絞る．
+    let deleteQuery = supabase.from("folders").delete().eq("id", folder.id);
+    deleteQuery =
+      folder.user_id === null
+        ? deleteQuery.is("user_id", null)
+        : deleteQuery.eq("user_id", user.id);
+
+    const { error: deleteError } = await deleteQuery;
 
     if (deleteError) {
       console.error("フォルダの削除に失敗", deleteError);
@@ -361,9 +389,6 @@ export default function MapList() {
       return;
     }
 
-    setChildFolders((current) =>
-      current.filter((f) => f.id !== folder.id),
-    );
     window.location.reload();
   }
 
@@ -373,6 +398,19 @@ export default function MapList() {
 
   if (error) {
     return <ErrorMessage message={error.message} />;
+  }
+
+  if (folderNotFound) {
+    return (
+      <div className="grid h-full place-items-center p-8 text-slate-600">
+        <div className="text-center">
+          <p className="text-lg font-semibold">フォルダが見つかりません</p>
+          <Link to="/" className="mt-3 inline-block text-sm text-rose-500 hover:underline">
+            ホームに戻る
+          </Link>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -518,9 +556,10 @@ export default function MapList() {
                 </div>
               </Link>
 
-              {/* 作成者だけ削除ボタンを表示する */}
-              {(f.user_id === null ||
-                currentUser?.id === f.user_id) && (
+              {/* 作成者だけ削除ボタンを表示する（持ち主なしフォルダはログイン済みなら誰でも） */}
+              {(f.user_id === null
+                ? Boolean(currentUser)
+                : currentUser?.id === f.user_id) && (
                 <button
                   type="button"
                   onClick={() => handleDeleteFolder(f)}
