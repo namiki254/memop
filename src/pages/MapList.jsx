@@ -176,8 +176,6 @@ export default function MapList() {
           const favorites = map.map_favorites || [];
           return {
             ...map,
-            // お気に入りさている件数
-            favorite_count: favorites.length,
             // ログインユーザーが自分のお気に入りリストに含まれているか
             is_favorited: user ? favorites.some((fav) => fav.user_id === user.id) : false,
           };
@@ -287,20 +285,11 @@ export default function MapList() {
         if (insertError) throw insertError;
       }
 
-      // 画面上のStateを手動で更新（再読み込みなしで即座に数字と見た目を切り替える）
+      // 画面上のStateを手動で更新（再読み込みなしで即座に見た目を切り替える）
       setMaps((prevMaps) =>
-        prevMaps.map((m) => {
-          if (m.id === mapId) {
-            return {
-              ...m,
-              is_favorited: !isFavorited,
-              favorite_count: isFavorited
-                ? m.favorite_count - 1
-                : m.favorite_count + 1,
-            };
-          }
-          return m;
-        })
+        prevMaps.map((m) =>
+          m.id === mapId ? { ...m, is_favorited: !isFavorited } : m
+        )
       );
     } catch (e) {
       console.error("マップのお気に入りの更新に失敗しました", e);
@@ -470,7 +459,6 @@ export default function MapList() {
           >
             <option value="created_at">作成日</option>
             <option value="updated_at">更新日</option>
-            {/* <option value="favorite_count">お気に入り数</option> */}
             <option value="title">タイトル</option>
           </select>
 
@@ -518,7 +506,7 @@ export default function MapList() {
                       className="flex-shrink-0 transition hover:scale-110"
                       title={f.is_favorited ? "お気に入り解除" : "お気に入り登録"}
                     >
-                      <span className={`text-2xl ${f.is_favorited ? "text-red-500" : "text-slate-300"}`}>
+                      <span className={`text-3xl ${f.is_favorited ? "text-red-500" : "text-slate-300"}`}>
                         ♥
                       </span>
                     </button>
@@ -566,9 +554,6 @@ export default function MapList() {
                           <span className={`text-3xl ${map.is_favorited ? "text-red-500" : "text-slate-300"}`}>
                             ♥
                           </span>
-                          {/* <span className="text-sm font-semibold text-slate-600">
-                            {map.favorite_count}
-                          </span> */}
                         </button>
                       </div>
 
