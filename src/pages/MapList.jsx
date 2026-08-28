@@ -423,61 +423,79 @@ export default function MapList() {
             : "ここには何もありません．"}
         </p>
       ) : (
-        <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-3">
-          {visibleFolders.map((f) => (
-            <Link
-              key={f.id}
-              to={`/folders/${f.id}`}
-              className="flex items-center gap-3 rounded-lg border border-slate-200 bg-white p-4 shadow-sm hover:bg-slate-50"
-            >
-              <span className="text-2xl">📁</span>
-              <span className="font-bold text-slate-800">{f.name}</span>
-            </Link>
-          ))}
 
-          {visibleMaps.map((map) => (
-            <Link
-              key={map.id}
-              to={`/maps/${map.id}`}
-              className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm"
-            >
-              {map.image_url ? (
-                <img
-                  src={map.image_url}
-                  alt={map.title}
-                  className="h-40 w-full object-cover"
-                />
-              ) : (
-                <div className="h-40 w-full bg-slate-200" />
-              )}
-
-              {/* お気に入りボタンを追加 */}
-              <div className="p-4">
-                <div className="flex items-start justify-between gap-2">
-                  <h3 className="font-bold text-slate-800">{map.title}</h3>
-
-                  {/* お気に入りボタン */}
-                  <button
-                    type="button"
-                    onClick={(e) => toggleFavorite(e, map.id, map.is_favorited)}
-                    className="flex items-center gap-1 text-sm transition hover:scale-110"
-                    title={map.is_favorited ? "お気に入り解除" : "お気に入り登録"}
+        <div className="mt-6 space-y-6">
+          {/* フォルダ一覧のセクション */}
+          {visibleFolders.length > 0 && (
+            <div>
+              <h3 className="mb-3 text-sm font-bold text-slate-500">フォルダ</h3>
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                {visibleFolders.map((f) => (
+                  <Link
+                    key={f.id}
+                    to={`/folders/${f.id}`}
+                    className="flex items-center gap-3 rounded-lg border border-slate-200 bg-white p-4 shadow-sm hover:bg-slate-50"
                   >
-                    <span className={map.is_favorited ? "text-red-500" : "text-slate-300"}>
-                      ♥
-                    </span>
-                    <span className="text-xs text-slate-500">
-                      {map.favorite_count}
-                    </span>
-                  </button>
-                </div>
-
-                <p className="mt-1 text-sm text-slate-500">
-                  {map.description}
-                </p>
+                    <span className="text-2xl">📁</span>
+                    <span className="font-bold text-slate-800">{f.name}</span>
+                  </Link>
+                ))}
               </div>
-            </Link>
-          ))}
+            </div>
+          )}
+
+          {/* マップ一覧のセクション */}
+          {visibleMaps.length > 0 && (
+            <div>
+              <h3 className="mb-3 text-sm font-bold text-slate-500">マップ</h3>
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+
+                {visibleMaps.map((map) => (
+                  <Link
+                    key={map.id}
+                    to={`/maps/${map.id}`}
+                    className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm"
+                  >
+                    {map.image_url ? (
+                      <img
+                        src={map.image_url}
+                        alt={map.title}
+                        className="h-40 w-full object-cover"
+                      />
+                    ) : (
+                      <div className="h-40 w-full bg-slate-200" />
+                    )}
+
+                    {/* お気に入りボタンを追加 */}
+                    <div className="p-4">
+                      <div className="flex items-start justify-between gap-2">
+                        <h3 className="font-bold text-slate-800">{map.title}</h3>
+
+                        {/* お気に入りボタン */}
+                        <button
+                          type="button"
+                          onClick={(e) => toggleFavorite(e, map.id, map.is_favorited)}
+                          className="flex items-center gap-1 text-sm transition hover:scale-110"
+                          title={map.is_favorited ? "お気に入り解除" : "お気に入り登録"}
+                        >
+                          <span className={`text-2xl ${map.is_favorited ? "text-red-500" : "text-slate-300"}`}>
+                            ♥
+                          </span>
+                          <span className="text-sm font-semibold text-slate-600">
+                            {map.favorite_count}
+                          </span>
+                        </button>
+                      </div>
+
+                      <p className="mt-1 text-sm text-slate-500">
+                        {map.description}
+                      </p>
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>
