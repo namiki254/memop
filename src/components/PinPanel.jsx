@@ -23,6 +23,18 @@ import { renderTextWithLinks } from "../lib/linkify";
  * kind が "button" のピンは，メモの代わりに「押すと別のマップへ移動する」
  * 動作を持つ．押したときの実際の移動処理は MapDetail.jsx 側（#67）で行う．
  */
+// HTMLのmaxLengthはUTF-16のコード単位数で数えるため，家族・カップル等の
+// 複数コードポイントからなる絵文字（ZWJ結合絵文字）が入力途中で分断され，
+// 壊れた見た目になることがある．書記素クラスタ単位で数えて切り詰める．
+function truncateToGraphemes(value, maxLength) {
+  if (typeof Intl !== "undefined" && Intl.Segmenter) {
+    const segmenter = new Intl.Segmenter(undefined, { granularity: "grapheme" });
+    const segments = Array.from(segmenter.segment(value), (s) => s.segment);
+    return segments.slice(0, maxLength).join("");
+  }
+  return Array.from(value).slice(0, maxLength).join("");
+}
+
 export function PinPanel({
   pin,
   currentUser,
@@ -41,8 +53,12 @@ export function PinPanel({
 }) {
   const isNew = !pin?.id;
 
-  // 今ログインしている人が、このピンの作成者かどうか
-  const isOwner = currentUser?.id === pin?.user_id;
+  // このピンを編集・削除できるか．
+  // 持ち主なし（user_id が null）のピンは，ログイン済みなら誰でも編集・削除できる
+  // （MapDetail.jsx の canEditPin と同じ扱い．マップ・フォルダの「持ち主なし」仕様に合わせている）．
+  const isOwner = pin?.user_id === null
+    ? Boolean(currentUser)
+    : currentUser?.id === pin?.user_id;
 
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
@@ -325,9 +341,19 @@ export function PinPanel({
                 <input
                   type="text"
                   value={customPinType}
-                  onChange={(e) => setCustomPinType(e.target.value)}
+                  onChange={(e) => {
+                    // 日本語入力（IME）の変換中に強制的に値を書き換えると，
+                    // 変換候補ウィンドウが崩れることがあるため，変換確定後にだけ切り詰める．
+                    if (e.nativeEvent.isComposing) {
+                      setCustomPinType(e.target.value);
+                      return;
+                    }
+                    setCustomPinType(truncateToGraphemes(e.target.value, 4));
+                  }}
+                  onCompositionEnd={(e) =>
+                    setCustomPinType(truncateToGraphemes(e.target.value, 4))
+                  }
                   disabled={saving}
-                  maxLength={4}
                   placeholder="例：🐱 / 猫"
                   className="mt-2 w-full rounded-xl border border-rose-100 bg-rose-50/30 px-3 py-2 text-sm outline-none focus:border-rose-300 focus:ring-4 focus:ring-rose-100 disabled:bg-stone-100"
                 />
