@@ -33,6 +33,8 @@ export function MapView({ map, pins = [], pendingPin = null, onPinClick, onMapCl
   });
   const imgRef = useRef(null);
   const mapAreaRef = useRef(null);
+  const scrollAreaRef = useRef(null);
+  const dragStartRef = useRef(null);
   const moveFrameRef = useRef(null);
   const pendingMoveRef = useRef(null);
 
@@ -80,6 +82,37 @@ export function MapView({ map, pins = [], pendingPin = null, onPinClick, onMapCl
     };
   }, []);
 
+  // 右クリックドラッグ中のマウス移動を画面全体で監視する
+  useEffect(() => {
+    function handleMouseMove(event) {
+      if (!dragStartRef.current) return;
+      if (!scrollAreaRef.current) return;
+
+      const deltaX = event.clientX - dragStartRef.current.x;
+      const deltaY = event.clientY - dragStartRef.current.y;
+
+      scrollAreaRef.current.scrollLeft =
+        dragStartRef.current.scrollLeft - deltaX;
+
+      scrollAreaRef.current.scrollTop =
+        dragStartRef.current.scrollTop - deltaY;
+    }
+
+    function handleMouseUp(event) {
+      if (event.button !== 2) return;
+
+      dragStartRef.current = null;
+    }
+
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
+
+    return () => {
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+    };
+  }, []);
+
   if (!map?.image_url) {
     return (
       <div className="grid h-full w-full place-items-center bg-slate-200 text-slate-500">
@@ -93,8 +126,23 @@ export function MapView({ map, pins = [], pendingPin = null, onPinClick, onMapCl
     );
   }
 
+  // 右クリックドラッグ開始時の位置を保存
+  function handleMapMouseDown(event) {
+    if (event.button !== 2) return;
+    if (!scrollAreaRef.current) return;
 
+    event.preventDefault();
 
+    dragStartRef.current = {
+      x: event.clientX,
+      y: event.clientY,
+      scrollLeft: scrollAreaRef.current.scrollLeft,
+      scrollTop: scrollAreaRef.current.scrollTop,
+    };
+  }
+
+  
+  
   /**
    * クリックされた場所を「画像に対する割合」に直して親へ渡す．
    *
@@ -173,7 +221,12 @@ export function MapView({ map, pins = [], pendingPin = null, onPinClick, onMapCl
 
   return (
     // 一番外側．relativeを付与してボタンの起点とし、スクロールを受け持つ
-    <div className="relative h-full w-full overflow-auto p-4">
+    <div
+      ref={scrollAreaRef}
+      onMouseDown={handleMapMouseDown}
+      onContextMenu={(event) => event.preventDefault()}
+      className="relative h-full w-full min-w-0 max-w-full overflow-auto p-4"
+    >
       {/* ズームボタン（左上に絶対配置＆クリック透過制御） */}
       <div className="sticky top-2 left-2 z-20 w-fit pointer-events-none">
         <div className="flex gap-1 rounded-md bg-white/90 p-1 shadow backdrop-blur-sm pointer-events-auto">

@@ -37,6 +37,10 @@ export default function AuthButton() {
     try {
       const { error } = await supabase.auth.signInWithOtp({
         email,
+        options: {
+          // ★ 今開いているページのURLをメールのリンク先に指定
+          emailRedirectTo: window.location.href,
+        },
       });
 
       if (error) {
@@ -60,7 +64,8 @@ export default function AuthButton() {
       const { error } = await supabase.auth.signInWithOAuth({
         provider: "github",
         options: {
-          redirectTo: window.location.origin,
+          // origin（ドメインのみ）から href（パスを含む現在の全URL）に変更
+          redirectTo: window.location.href,
         },
       });
 
@@ -69,8 +74,6 @@ export default function AuthButton() {
         console.error(error);
       }
     } finally {
-      // 成功時はここに来る前にページ遷移するのが通常だが，
-      // ポップアップブロック等で遷移しないケースに備えて必ず戻す．
       setSubmitting(false);
     }
   }

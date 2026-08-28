@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import Loading from "../components/Loading";
 import ErrorMessage from "../components/ErrorMessage";
@@ -7,6 +7,7 @@ import ErrorMessage from "../components/ErrorMessage";
 import { normalizeSearchText } from "../lib/searchText";
 
 import MoveMapModal from "../components/MoveMapModal";
+import SaveToMyListButton from "../components/SaveToMyListButton";
 
 /**
  * マップ一覧ページ．
@@ -19,6 +20,7 @@ import MoveMapModal from "../components/MoveMapModal";
  */
 export default function MapList() {
   const { folderId } = useParams();
+  const navigate = useNavigate();
 
   // 今いるフォルダ自身．トップ階層のときは null．
   const [folder, setFolder] = useState(null);
@@ -49,8 +51,13 @@ export default function MapList() {
   const [creatingFolder, setCreatingFolder] = useState(false);
   const [folderError, setFolderError] = useState("");
 
-  // URLコピー完了メッセージの表示状態
-  const [copied, setCopied] = useState(false);
+// 今開いているフォルダの名前編集に使う状態
+const [isEditingFolder, setIsEditingFolder] = useState(false);
+const [editingFolderName, setEditingFolderName] = useState("");
+const [updatingFolder, setUpdatingFolder] = useState(false);
+
+// URLコピー完了メッセージの表示状態
+const [copied, setCopied] = useState(false);
 
   // マップ・フォルダを名前で検索する．
   // 通信は増やさず，すでに取得済みの maps / childFolders を絞り込むだけ．
@@ -124,6 +131,12 @@ export default function MapList() {
     return sortOrder === "asc" ? cmp : -cmp;
   });
   const isEmpty = visibleFolders.length === 0 && visibleMaps.length === 0;
+  
+  useEffect(() => {
+  setIsEditingFolder(false);
+  setEditingFolderName("");
+  setFolderError("");
+}, [folderId]);
 
   // 現在ログインしているユーザーを取得する
   useEffect(() => {
@@ -534,6 +547,69 @@ export default function MapList() {
     }
   }
 
+  // 今開いているフォルダの名前を更新する
+  async function handleUpdateFolder() {
+    if (!folder || updatingFolder) return;
+
+    const name = editingFolderName.trim();
+
+    if (!name) {
+      setFolderError("フォルダ名を入力してください。");
+      return;
+    }
+
+  setUpdatingFolder(true);
+  setFolderError("");
+
+  try {
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser();
+
+    // 保存直前にも、作成者本人か確認する
+    if (userError || !user || user.id !== folder.user_id) {
+      setFolderError("このフォルダは編集できません。");
+      return;
+    }
+
+    const { data: updatedFolder, error: updateError } = await supabase
+      .from("folders")
+      .update({ name })
+      .eq("id", folder.id)
+      .eq("user_id", user.id)
+      .select()
+      .maybeSingle();
+
+    if (updateError) {
+      console.error("フォルダ名の更新に失敗", updateError);
+      setFolderError(`更新に失敗しました。${updateError.message}`);
+      return;
+    }
+
+    if (!updatedFolder) {
+      setFolderError("フォルダを更新できませんでした。");
+      return;
+    }
+
+    setFolder(updatedFolder);
+    setBreadcrumb((current) =>
+      current.map((f) =>
+        f.id === updatedFolder.id ? updatedFolder : f,
+      ),
+    );
+
+    setIsEditingFolder(false);
+  } catch (e) {
+    console.error("フォルダ名の更新中に予期しないエラー", e);
+    setFolderError(
+      `予期しないエラーが発生しました。${e?.message ?? e}`,
+    );
+  } finally {
+    setUpdatingFolder(false);
+  }
+}
+
   // フォルダを削除する．
   // user_id が null の「持ち主なし」フォルダは誰でも削除できる仕様だが，
   // それでも未ログインの匿名ユーザーには許可しない．
@@ -570,7 +646,13 @@ export default function MapList() {
       return;
     }
 
-    window.location.reload();
+    // 削除したフォルダの親へ戻る。
+    // 親がない場合はホームへ戻る。
+    if (folder.parent_folder_id) {
+      navigate(`/folders/${folder.parent_folder_id}`);
+    } else {
+      navigate("/");
+    }
   }
 
   // フォルダのURLをコピーする
@@ -742,11 +824,31 @@ export default function MapList() {
       </p>
 
       <div className="mt-1 flex flex-col items-stretch gap-2 lg:flex-row lg:items-center lg:justify-between">
-        <h2 className="w-full min-w-0 break-words text-2xl font-bold text-slate-800 lg:flex-1">
-          {folder ? folder.name : "マップ一覧"}
-        </h2>
+        {folder && isEditingFolder ? (
+          <input
+            type="text"
+            value={editingFolderName}
+            onChange={(e) => setEditingFolderName(e.target.value)}
+            maxLength={100}
+            className="w-full min-w-0 rounded border border-slate-300 px-3 py-1.5 text-2xl font-bold text-slate-800 lg:flex-1"
+          />
+        ) : (
+          <h2 className="w-full min-w-0 break-words text-2xl font-bold text-slate-800 lg:flex-1">
+            {folder ? folder.name : "マップ一覧"}
+          </h2>
+        )}
 
         <div className="flex w-full flex-wrap items-center gap-2 lg:w-auto lg:shrink-0 lg:justify-end">
+          {/* フォルダ画面でだけ保存ボタンを表示する（作成者本人には内部で非表示になる） */}
+          {authChecked && folder && (
+            <SaveToMyListButton
+              itemType="folder"
+              itemId={folder.id}
+              ownerId={folder.user_id}
+              currentUser={currentUser}
+            />
+          )}
+
           {/* フォルダ階層（folderIdがあるとき）のみ「URLをコピー」ボタンを表示 */}
           {folderId && (
             <div className="flex items-center gap-2">
@@ -760,6 +862,53 @@ export default function MapList() {
             </div>
           )}
 
+          {/* 作成者だけ編集・削除できる */}
+          {folder && currentUser?.id === folder.user_id && (
+            <>
+              {isEditingFolder ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setIsEditingFolder(false)}
+                    disabled={updatingFolder}
+                    className="rounded border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                  >
+                    キャンセル
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleUpdateFolder}
+                    disabled={updatingFolder || editingFolderName.trim() === ""}
+                    className="rounded bg-slate-800 px-3 py-1.5 text-sm text-white disabled:bg-slate-300"
+                  >
+                    {updatingFolder ? "保存中..." : "保存"}
+                  </button>
+                </>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditingFolderName(folder.name);
+                    setIsEditingFolder(true);
+                  }}
+                  className="rounded border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
+                >
+                  編集
+                </button>
+              )}
+
+              <button
+                type="button"
+                onClick={() => handleDeleteFolder(folder)}
+                disabled={updatingFolder}
+                className="rounded border border-red-300 px-3 py-1.5 text-sm text-red-600 hover:bg-red-50 disabled:opacity-50"
+              >
+                削除
+              </button>
+            </>
+          )}
+
           <button
             type="button"
             onClick={startCreatingFolder}
@@ -769,6 +918,7 @@ export default function MapList() {
           </button>
         </div>
       </div>
+
 
       {isCreatingFolder && (
         <form onSubmit={handleCreateFolder} className="mt-3 flex max-w-sm gap-2">
@@ -910,7 +1060,7 @@ export default function MapList() {
             : "ここには何もありません．"}
         </p>
       ) : (
-        <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="mt-6 grid auto-rows-fr grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {visibleFolders.map((f) => (
             <div
               key={f.id}
@@ -955,18 +1105,6 @@ export default function MapList() {
                 </span>
               </button>
 
-              {/* 作成者だけ削除ボタンを表示する（持ち主なしフォルダはログイン済みなら誰でも） */}
-              {(f.user_id === null
-                ? Boolean(currentUser)
-                : currentUser?.id === f.user_id) && (
-                  <button
-                    type="button"
-                    onClick={() => handleDeleteFolder(f)}
-                    className="text-xs text-red-600 hover:underline"
-                  >
-                    削除
-                  </button>
-                )}
             </div>
           ))}
 
@@ -1009,9 +1147,17 @@ export default function MapList() {
                 )}
 
                 <div className="p-4">
-                  <h3 className="font-bold text-[#3f3a3a]">
-                    {map.title}
-                  </h3>
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-bold text-[#3f3a3a] truncate">
+                      {map.title}
+                    </h3>
+
+                    {/* 公開/非公開バッジ */}
+                    <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium ${map.is_public ? "bg-slate-100 text-slate-600" : "bg-amber-100 text-amber-800"
+                      }`}>
+                      {map.is_public ? "公開" : "非公開"}
+                    </span>
+                  </div>
 
                   {map.description && (
                     <p className="mt-1 line-clamp-2 text-sm text-[#817878]">
@@ -1019,6 +1165,7 @@ export default function MapList() {
                     </p>
                   )}
                 </div>
+
               </Link>
 
               {/* マップ作成者にだけ移動ボタンを表示する */}
