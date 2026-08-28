@@ -23,6 +23,8 @@ export default function MapDetail() {
   const navigate = useNavigate();
   // Supabaseから取得したデータを保存する
   const [map, setMap] = useState(null);
+  // マップが入っているフォルダの階層を保存する
+  const [breadcrumb, setBreadcrumb] = useState([]);
   const [pins, setPins] = useState([]);
   // 現在ログインしているユーザーを保存する
   const [currentUser, setCurrentUser] = useState(null);
@@ -245,6 +247,31 @@ export default function MapDetail() {
       if (!mapData) {
         return;
       }
+
+      // マップがフォルダに入っている場合、親フォルダを順番にたどる
+      const crumbs = [];
+      let cursor = mapData.folder_id;
+
+      while (cursor) {
+        const { data: folderData, error: folderError } = await supabase
+          .from("folders")
+          .select("id, name, parent_folder_id")
+          .eq("id", cursor)
+          .maybeSingle();
+
+        if (folderError) {
+          throw folderError;
+        }
+
+        if (!folderData) {
+          break;
+        }
+
+        crumbs.unshift(folderData);
+        cursor = folderData.parent_folder_id;
+      }
+
+      setBreadcrumb(crumbs);
 
       // 2. pinsテーブルから、そのマップのピンを取得
       const { data: pinData, error: pinError } = await supabase
@@ -743,6 +770,27 @@ export default function MapDetail() {
     <div className="flex h-full">
       <div className="flex h-full flex-1 flex-col">
         <div className="border-b border-slate-200 px-6 py-3">
+          {/* パンくずリスト */}
+          <p className="mb-2 text-sm text-slate-500">
+            <Link to="/" className="hover:underline">
+              ホーム
+            </Link>
+
+            {breadcrumb.map((folder) => (
+              <span key={folder.id}>
+                {" / "}
+                <Link
+                  to={`/folders/${folder.id}`}
+                  className="hover:underline"
+                >
+                  {folder.name}
+                </Link>
+              </span>
+            ))}
+
+            {" / "}
+            <span>{map.title}</span>
+          </p>
           {isEditingMap ? (
             <form onSubmit={handleUpdateMap}>
               <input
