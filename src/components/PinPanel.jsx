@@ -90,8 +90,7 @@ export function PinPanel({
     setTitle(pin?.title ?? "");
     setContent(pin?.content ?? "");
     setKind(pin?.kind ?? "pin");
-    setLinkMapId(pin?.link_map_id ?? mapOptions[0]?.id ?? "");
-
+    setLinkMapId(pin?.link_map_id ?? "");
     // 既存4種類に含まれない場合は自由入力として扱う
     const isCustomPinType =
       pin?.pin_type &&
