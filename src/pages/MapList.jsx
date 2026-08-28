@@ -49,6 +49,9 @@ export default function MapList() {
   const [creatingFolder, setCreatingFolder] = useState(false);
   const [folderError, setFolderError] = useState("");
 
+  // URLコピー完了メッセージの表示状態
+  const [copied, setCopied] = useState(false);
+
   // マップ・フォルダを名前で検索する．
   // 通信は増やさず，すでに取得済みの maps / childFolders を絞り込むだけ．
   const [searchQuery, setSearchQuery] = useState("");
@@ -72,60 +75,57 @@ export default function MapList() {
   const trimmedQuery = searchQuery.trim();
   const normalizedQuery = normalizeSearchText(trimmedQuery);
 
-  // 値が無い（null/undefined）ものは並び順の最後に送る．
-  // 両方とも無い場合は同順位（0）として扱う．そうしないと比較関数の
-  // 対称性が壊れ（a<b と b<a が両方成り立ってしまう），ブラウザによっては
-  // 並び替え結果が不安定になる．
-  function compareByKey(key) {
-    return (a, b) => {
-      const valA = a[key];
-      const valB = b[key];
-      const aMissing = valA === undefined || valA === null;
-      const bMissing = valB === undefined || valB === null;
+function compareByKey(key) {
+  return (a, b) => {
+    const valA = a[key];
+    const valB = b[key];
+    const aMissing = valA === undefined || valA === null;
+    const bMissing = valB === undefined || valB === null;
 
-      if (aMissing && bMissing) return 0;
-      if (aMissing) return 1;
-      if (bMissing) return -1;
+    if (aMissing && bMissing) return 0;
+    if (aMissing) return 1;
+    if (bMissing) return -1;
 
-      if (typeof valA === "string") {
-        return valA.localeCompare(valB, "ja");
-      }
-      if (valA < valB) return -1;
-      if (valA > valB) return 1;
-      return 0;
-    };
-  }
+    if (typeof valA === "string") {
+      return valA.localeCompare(valB, "ja");
+    }
+    if (valA < valB) return -1;
+    if (valA > valB) return 1;
+    return 0;
+  };
+}
 
-  const filteredMaps = maps.filter((map) => {
-    const matchesType = displayType === "all" || displayType === "maps";
-    const matchesSearch =
-      !trimmedQuery || normalizeSearchText(map.title).includes(normalizedQuery);
-    const matchesFavorite = !showOnlyFavorites || map.is_favorited;
-    return matchesType && matchesSearch && matchesFavorite;
-  });
+const filteredMaps = maps.filter((map) => {
+  const matchesType = displayType === "all" || displayType === "maps";
+  const matchesSearch =
+    !trimmedQuery ||
+    normalizeSearchText(map.title).includes(normalizedQuery);
+  const matchesFavorite = !showOnlyFavorites || map.is_favorited;
+  return matchesType && matchesSearch && matchesFavorite;
+});
 
-  const filteredFolders = childFolders.filter((f) => {
-    const matchesType = displayType === "all" || displayType === "folders";
-    const matchesSearch =
-      !trimmedQuery || normalizeSearchText(f.name).includes(normalizedQuery);
-    const matchesFavorite = !showOnlyFavorites || f.is_favorited;
-    return matchesType && matchesSearch && matchesFavorite;
-  });
+const filteredFolders = childFolders.filter((f) => {
+  const matchesType = displayType === "all" || displayType === "folders";
+  const matchesSearch =
+    !trimmedQuery || normalizeSearchText(f.name).includes(normalizedQuery);
+  const matchesFavorite = !showOnlyFavorites || f.is_favorited;
+  return matchesType && matchesSearch && matchesFavorite;
+});
 
-  const visibleMaps = [...filteredMaps].sort((a, b) => {
-    const cmp = compareByKey(sortKey)(a, b);
-    return sortOrder === "asc" ? cmp : -cmp;
-  });
-  const visibleFolders = [...filteredFolders].sort((a, b) => {
-    // フォルダは title ではなく name プロパティを使う
-    const key = sortKey === "title" ? "name" : sortKey;
-    const cmp = compareByKey(key)(a, b);
-    return sortOrder === "asc" ? cmp : -cmp;
-  });
+const visibleMaps = [...filteredMaps].sort((a, b) => {
+  const cmp = compareByKey(sortKey)(a, b);
+  return sortOrder === "asc" ? cmp : -cmp;
+});
 
+const visibleFolders = [...filteredFolders].sort((a, b) => {
+  // フォルダは title ではなく name プロパティを使う
+  const key = sortKey === "title" ? "name" : sortKey;
+  const cmp = compareByKey(key)(a, b);
+  return sortOrder === "asc" ? cmp : -cmp;
+});
   const isEmpty = visibleFolders.length === 0 && visibleMaps.length === 0;
 
-// 現在ログインしているユーザーを取得する
+  // 現在ログインしているユーザーを取得する
   useEffect(() => {
     async function loadCurrentUser() {
       const {
@@ -150,7 +150,7 @@ export default function MapList() {
       subscription.unsubscribe();
     };
   }, []);
-  
+
   useEffect(() => {
     let cancelled = false;
 
@@ -173,7 +173,7 @@ export default function MapList() {
           setBreadcrumb([]);
           setChildFolders([]);
           setMaps([]);
-        return;
+          return;
         }
 
         // 今のフォルダ自身と，そこから親をたどってパンくずを組み立てる．
@@ -221,7 +221,7 @@ export default function MapList() {
           setFolderNotFound(true);
           return;
         }
-        
+
         // 移動先の選択欄に表示する、すべてのフォルダを取得する
         const { data: foldersForMove, error: foldersForMoveError } =
           await supabase
@@ -244,8 +244,8 @@ export default function MapList() {
         } else {
           // トップでは、自分が作ったフォルダだけ取得
           foldersQuery = foldersQuery
-          .is("parent_folder_id", null)
-          .eq("user_id", currentUser.id);
+            .is("parent_folder_id", null)
+            .eq("user_id", currentUser.id);
         }
 
         const { data: folders, error: foldersError } = await foldersQuery;
@@ -280,8 +280,8 @@ export default function MapList() {
 
             savedFolders = data ?? [];
           }
-      }
-        
+        }
+
         let mapsQuery = supabase
           .from("maps")
           .select("*, map_favorites(user_id)")
@@ -477,8 +477,7 @@ export default function MapList() {
     } catch (unexpectedError) {
       console.error("マップの移動中に予期しないエラー", unexpectedError);
       setMoveError(
-        `予期しないエラーが発生しました。${
-          unexpectedError?.message ?? unexpectedError
+        `予期しないエラーが発生しました。${unexpectedError?.message ?? unexpectedError
         }`,
       );
     } finally {
@@ -574,89 +573,105 @@ export default function MapList() {
     window.location.reload();
   }
 
-  // マップのお気に入りを切り替える
-  async function toggleFavorite(event, mapId, isFavorited) {
-    event.preventDefault();
-    event.stopPropagation();
+// フォルダのURLをコピーする
+async function copyFolderUrl() {
+  setFolderError("");
 
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
+  try {
+    await navigator.clipboard.writeText(window.location.href);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  } catch (error) {
+    setFolderError(`URLのコピーに失敗しました. ${error.message}`);
+  }
+}
 
-    if (!user) {
-      alert("お気に入り機能を利用するにはログインが必要です．");
-      return;
-    }
+// マップのお気に入りを切り替える
+async function toggleFavorite(event, mapId, isFavorited) {
+  event.preventDefault();
+  event.stopPropagation();
 
-    try {
-      if (isFavorited) {
-        const { error: deleteError } = await supabase
-          .from("map_favorites")
-          .delete()
-          .eq("map_id", mapId)
-          .eq("user_id", user.id);
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
-        if (deleteError) throw deleteError;
-      } else {
-        const { error: insertError } = await supabase
-          .from("map_favorites")
-          .insert({ map_id: mapId, user_id: user.id });
-
-        if (insertError) throw insertError;
-      }
-
-      setMaps((current) =>
-        current.map((m) =>
-          m.id === mapId ? { ...m, is_favorited: !isFavorited } : m,
-        ),
-      );
-    } catch (e) {
-      console.error("マップのお気に入りの更新に失敗しました", e);
-      alert(`お気に入りの更新に失敗しました．${e.message}`);
-    }
+  if (!user) {
+    alert("お気に入り機能を利用するにはログインが必要です．");
+    return;
   }
 
-  // フォルダのお気に入りを切り替える
-  async function toggleFolderFavorite(event, targetFolderId, isFavorited) {
-    event.preventDefault();
-    event.stopPropagation();
+  try {
+    if (isFavorited) {
+      const { error: deleteError } = await supabase
+        .from("map_favorites")
+        .delete()
+        .eq("map_id", mapId)
+        .eq("user_id", user.id);
 
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
+      if (deleteError) throw deleteError;
+    } else {
+      const { error: insertError } = await supabase
+        .from("map_favorites")
+        .insert({ map_id: mapId, user_id: user.id });
 
-    if (!user) {
-      alert("お気に入り機能を利用するにはログインが必要です．");
-      return;
+      if (insertError) throw insertError;
     }
 
-    try {
-      if (isFavorited) {
-        const { error: deleteError } = await supabase
-          .from("folder_favorites")
-          .delete()
-          .eq("folder_id", targetFolderId)
-          .eq("user_id", user.id);
-
-        if (deleteError) throw deleteError;
-      } else {
-        const { error: insertError } = await supabase
-          .from("folder_favorites")
-          .insert({ folder_id: targetFolderId, user_id: user.id });
-
-        if (insertError) throw insertError;
-      }
-
-      setChildFolders((current) =>
-        current.map((f) =>
-          f.id === targetFolderId ? { ...f, is_favorited: !isFavorited } : f,
-        ),
-      );
-    } catch (e) {
-      console.error("フォルダのお気に入り更新に失敗しました", e);
-      alert(`お気に入りの更新に失敗しました．${e.message}`);
-    }
+    setMaps((current) =>
+      current.map((m) =>
+        m.id === mapId ? { ...m, is_favorited: !isFavorited } : m,
+      ),
+    );
+  } catch (e) {
+    console.error("マップのお気に入りの更新に失敗しました", e);
+    alert(`お気に入りの更新に失敗しました．${e.message}`);
   }
+}
+
+// フォルダのお気に入りを切り替える
+async function toggleFolderFavorite(event, targetFolderId, isFavorited) {
+  event.preventDefault();
+  event.stopPropagation();
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    alert("お気に入り機能を利用するにはログインが必要です．");
+    return;
+  }
+
+  try {
+    if (isFavorited) {
+      const { error: deleteError } = await supabase
+        .from("folder_favorites")
+        .delete()
+        .eq("folder_id", targetFolderId)
+        .eq("user_id", user.id);
+
+      if (deleteError) throw deleteError;
+    } else {
+      const { error: insertError } = await supabase
+        .from("folder_favorites")
+        .insert({ folder_id: targetFolderId, user_id: user.id });
+
+      if (insertError) throw insertError;
+    }
+
+    setChildFolders((current) =>
+      current.map((f) =>
+        f.id === targetFolderId
+          ? { ...f, is_favorited: !isFavorited }
+          : f,
+      ),
+    );
+  } catch (e) {
+    console.error("フォルダのお気に入り更新に失敗しました", e);
+    alert(`お気に入りの更新に失敗しました．${e.message}`);
+  }
+}
+
 
   if (loading) {
     return <Loading />;
@@ -725,13 +740,35 @@ export default function MapList() {
         <h2 className="text-2xl font-bold text-slate-800">
           {folder ? folder.name : "マップ一覧"}
         </h2>
-        <button
-          type="button"
-          onClick={startCreatingFolder}
-          className="rounded border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
-        >
-          ＋ 新しいフォルダ
-        </button>
+
+        {/* 右側のボタンエリア */}
+        <div className="flex items-center gap-2">
+          {/* フォルダ階層（folderIdがあるとき）のみ「URLをコピー」ボタンを表示 */}
+          {folderId && (
+            <div className="flex items-center gap-2">
+              {copied && (
+                <span className="text-sm font-medium text-emerald-600">
+                  コピーしました
+                </span>
+              )}
+              <button
+                type="button"
+                onClick={copyFolderUrl}
+                className="rounded-md bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-700 hover:bg-slate-200"
+              >
+                フォルダのURLをコピー
+              </button>
+            </div>
+          )}
+
+          <button
+            type="button"
+            onClick={startCreatingFolder}
+            className="rounded border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
+          >
+            ＋ 新しいフォルダ
+          </button>
+        </div>
       </div>
 
       {isCreatingFolder && (
@@ -928,14 +965,14 @@ export default function MapList() {
               {(f.user_id === null
                 ? Boolean(currentUser)
                 : currentUser?.id === f.user_id) && (
-                <button
-                  type="button"
-                  onClick={() => handleDeleteFolder(f)}
-                  className="text-xs text-red-600 hover:underline"
-                >
-                  削除
-                </button>
-              )}
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteFolder(f)}
+                    className="text-xs text-red-600 hover:underline"
+                  >
+                    削除
+                  </button>
+                )}
             </div>
           ))}
 
