@@ -229,7 +229,10 @@ export default function MapList() {
       data: { user },
     } = await supabase.auth.getUser();
 
-    if (!user || user.id !== folder.user_id) {
+    if (
+      folder.user_id !== null &&
+      user?.id !== folder.user_id
+    ) {
       setFolderError("このフォルダは削除できません．");
       return;
     }
@@ -364,7 +367,8 @@ export default function MapList() {
             </Link>
 
             {/* 作成者だけ削除ボタンを表示する */}
-            {currentUser?.id === f.user_id && (
+            {(f.user_id === null ||
+            currentUser?.id === f.user_id) && (
               <button
                 type="button"
                 onClick={() => handleDeleteFolder(f)}
