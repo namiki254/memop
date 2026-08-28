@@ -264,11 +264,12 @@ export default function MapList() {
     }
 
     // RLSに加えて，クライアント側でも所有者条件を絞り込んでおく（多層防御）．
+    // ここは削除対象自身の user_id ではなく，今ログインしている人の id で絞る．
     let deleteQuery = supabase.from("folders").delete().eq("id", folder.id);
     deleteQuery =
       folder.user_id === null
         ? deleteQuery.is("user_id", null)
-        : deleteQuery.eq("user_id", folder.user_id);
+        : deleteQuery.eq("user_id", user.id);
 
     const { error: deleteError } = await deleteQuery;
 

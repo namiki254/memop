@@ -27,5 +27,7 @@ const FALLBACK_EMOJI = "📍";
  * 値が無い場合だけ📍にフォールバックする．
  */
 export function getPinEmoji(pinType) {
-  return EMOJI_BY_TYPE[pinType] ?? pinType ?? FALLBACK_EMOJI;
+  // pinType が空文字のときは "自由入力なし" と同じ扱いにする．
+  // ?? だと空文字はそのまま素通りしてしまい，見えないピンになるため || を使う．
+  return EMOJI_BY_TYPE[pinType] || pinType || FALLBACK_EMOJI;
 }

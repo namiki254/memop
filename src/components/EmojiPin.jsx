@@ -19,7 +19,8 @@ export function EmojiPin({
   size = "sm",
 }) {
   const sizeClasses = PIN_SIZES[size] ?? PIN_SIZES.sm;
-  const text = String(emoji ?? "📍");
+  // 空文字も未指定と同じ扱いにする（見えないピンになるのを防ぐ）
+  const text = String(emoji || "📍");
 
   return (
     <span

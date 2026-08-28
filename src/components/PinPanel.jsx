@@ -341,7 +341,16 @@ export function PinPanel({
                 <input
                   type="text"
                   value={customPinType}
-                  onChange={(e) =>
+                  onChange={(e) => {
+                    // 日本語入力（IME）の変換中に強制的に値を書き換えると，
+                    // 変換候補ウィンドウが崩れることがあるため，変換確定後にだけ切り詰める．
+                    if (e.nativeEvent.isComposing) {
+                      setCustomPinType(e.target.value);
+                      return;
+                    }
+                    setCustomPinType(truncateToGraphemes(e.target.value, 4));
+                  }}
+                  onCompositionEnd={(e) =>
                     setCustomPinType(truncateToGraphemes(e.target.value, 4))
                   }
                   disabled={saving}
