@@ -121,32 +121,42 @@ export default function MapList() {
         }
 
         // トップ階層なら parent_folder_id / folder_id が null のものだけ．
-        const { data: folders, error: foldersError } = folderId
-          ? await supabase
-              .from("folders")
-              .select("*")
-              .eq("parent_folder_id", folderId)
-              .order("name")
-          : await supabase
-              .from("folders")
-              .select("*")
-              .is("parent_folder_id", null)
-              .order("name");
+        let foldersQuery = supabase
+          .from("folders")
+          .select("*")
+          .order("name");
+
+        if (folderId) {
+          // 共有フォルダの中では、今まで通り子フォルダを取得
+          foldersQuery = foldersQuery.eq("parent_folder_id", folderId);
+        } else {
+          // トップでは、自分が作ったフォルダだけ取得
+          foldersQuery = foldersQuery
+          .is("parent_folder_id", null)
+          .eq("user_id", currentUser.id);
+        }
+
+const { data: folders, error: foldersError } = await foldersQuery;
 
         if (cancelled) return;
         if (foldersError) throw foldersError;
 
-        const { data: mapsData, error: mapsError } = folderId
-          ? await supabase
-              .from("maps")
-              .select("*")
-              .eq("folder_id", folderId)
-              .order("created_at", { ascending: false })
-          : await supabase
-              .from("maps")
-              .select("*")
-              .is("folder_id", null)
-              .order("created_at", { ascending: false });
+        let mapsQuery = supabase
+          .from("maps")
+          .select("*")
+          .order("created_at", { ascending: false });
+
+        if (folderId) {
+          // 共有フォルダの中では、今まで通りそのフォルダのマップを取得
+          mapsQuery = mapsQuery.eq("folder_id", folderId);
+        } else {
+          // トップでは、自分が作ったマップだけ取得
+          mapsQuery = mapsQuery
+            .is("folder_id", null)
+            .eq("user_id", currentUser.id);
+        }
+
+        const { data: mapsData, error: mapsError } = await mapsQuery;
 
         if (cancelled) return;
         if (mapsError) throw mapsError;
