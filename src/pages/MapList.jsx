@@ -51,6 +51,17 @@ export default function MapList() {
   // 選択肢: "desc"(降順), "asc"(昇順)
   const [sortOrder, setSortOrder] = useState("desc");
 
+  // 昇順/降順の自動切換
+  useEffect(() => {
+    if (sortKey === "title") {
+      // タイトル順のときは「昇順 (あ→ん/A→Z)」にする
+      setSortOrder("asc");
+    } else if (sortKey === "created_at" || sortKey === "updated_at") {
+      // 作成日・更新日のときは「降順 (新しい順)」にする
+      setSortOrder("desc");
+    }
+  }, [sortKey]);
+
   const trimmedQuery = searchQuery.trim();
   const normalizedQuery = normalizeSearchText(trimmedQuery);
 
@@ -401,7 +412,7 @@ export default function MapList() {
           >
             <option value="created_at">作成日</option>
             <option value="updated_at">更新日</option>
-            <option value="favorite_count">お気に入り数</option>
+            {/* <option value="favorite_count">お気に入り数</option> */}
             <option value="title">タイトル</option>
           </select>
 
@@ -478,12 +489,12 @@ export default function MapList() {
                           className="flex items-center gap-1 text-sm transition hover:scale-110"
                           title={map.is_favorited ? "お気に入り解除" : "お気に入り登録"}
                         >
-                          <span className={`text-2xl ${map.is_favorited ? "text-red-500" : "text-slate-300"}`}>
+                          <span className={`text-3xl ${map.is_favorited ? "text-red-500" : "text-slate-300"}`}>
                             ♥
                           </span>
-                          <span className="text-sm font-semibold text-slate-600">
+                          {/* <span className="text-sm font-semibold text-slate-600">
                             {map.favorite_count}
-                          </span>
+                          </span> */}
                         </button>
                       </div>
 
