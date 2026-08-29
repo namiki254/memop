@@ -8,6 +8,9 @@ import { PinPanel } from "../components/PinPanel";
 import { PIN_TYPES } from "../lib/pinTypes";
 import { normalizeSearchText } from "../lib/searchText";
 import SaveToMyListButton from "../components/SaveToMyListButton";
+import ThreeDotMenu, {
+  MenuItem,
+} from "../components/ThreeDotMenu";
 
 const MAP_BUTTON_FILTER = "kind:button";
 
@@ -50,6 +53,7 @@ export default function MapDetail() {
 
   // コピー状態を覚える
   const [copied, setCopied] = useState(false);
+  const [mapMenuOpen, setMapMenuOpen] = useState(false);
 
   // ピンのタイトル検索
   const [searchQuery, setSearchQuery] = useState("");
@@ -963,13 +967,42 @@ export default function MapDetail() {
                       コピーしました
                     </span>
                   )}
-                  <button
-                    type="button"
-                    onClick={copyUrl}
-                    className="rounded-md bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-700 hover:bg-slate-200"
+
+                  <ThreeDotMenu
+                    label={`${map.title}の操作メニューを開く`}
+                    isOpen={mapMenuOpen}
+                    onToggle={() => setMapMenuOpen((current) => !current)}
+                    onClose={() => setMapMenuOpen(false)}
                   >
-                    マップのURLをコピー
-                  </button>
+                    <MenuItem onClick={copyUrl}>
+                      {copied ? "✓ コピーしました" : "🔗 URLをコピー"}
+                    </MenuItem>
+
+                    {canEditMap && (
+                      <MenuItem
+                        onClick={() => {
+                          setMapMenuOpen(false);
+                          startEditingMap();
+                        }}
+                      >
+                        編集
+                      </MenuItem>
+                    )}
+
+                    {canEditMap && (
+                      <MenuItem
+                        danger
+                        disabled={savingMap}
+                        onClick={() => {
+                          setMapMenuOpen(false);
+                          handleDeleteMap();
+                        }}
+                      >
+                        削除
+                      </MenuItem>
+                    )}
+                  </ThreeDotMenu>
+
 
                   {visibleSiblingMaps.length > 0 && (
                     <button
@@ -984,24 +1017,8 @@ export default function MapDetail() {
                     </button>
                   )}
 
-                  {canEditMap && (
-                    <button
-                      onClick={startEditingMap}
-                      className="rounded-md border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
-                    >
-                      編集
-                    </button>
-                  )}
-                  {/* マップの削除は作成者だけができる */}
-                  {canEditMap && (
-                    <button
-                      onClick={handleDeleteMap}
-                      disabled={savingMap}
-                      className="rounded-md border border-red-200 px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 disabled:opacity-50"
-                    >
-                      削除
-                    </button>
-                  )}
+
+
                 </div>
               </div>
 

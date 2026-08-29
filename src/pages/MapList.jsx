@@ -9,6 +9,10 @@ import { normalizeSearchText } from "../lib/searchText";
 import MoveMapModal from "../components/MoveMapModal";
 import SaveToMyListButton from "../components/SaveToMyListButton";
 
+import ThreeDotMenu, {
+  MenuItem,
+} from "../components/ThreeDotMenu";
+
 /**
  * マップ一覧ページ．
  *
@@ -51,13 +55,37 @@ export default function MapList() {
   const [creatingFolder, setCreatingFolder] = useState(false);
   const [folderError, setFolderError] = useState("");
 
-// 今開いているフォルダの名前編集に使う状態
-const [isEditingFolder, setIsEditingFolder] = useState(false);
-const [editingFolderName, setEditingFolderName] = useState("");
-const [updatingFolder, setUpdatingFolder] = useState(false);
+  // 今開いているフォルダの名前編集に使う状態
+  const [isEditingFolder, setIsEditingFolder] = useState(false);
+  const [editingFolderName, setEditingFolderName] = useState("");
+  const [updatingFolder, setUpdatingFolder] = useState(false);
 
-// URLコピー完了メッセージの表示状態
-const [copied, setCopied] = useState(false);
+  // URLコピー完了メッセージの表示状態
+  const [copied, setCopied] = useState(false);
+
+  const [openMenu, setOpenMenu] = useState(null);
+  const [copiedMenu, setCopiedMenu] = useState(null);
+
+  async function copyItemUrl(type, id) {
+    const menuKey = `${type}-${id}`;
+    const path = type === "map" ? `/maps/${id}` : `/folders/${id}`;
+
+    try {
+      await navigator.clipboard.writeText(
+        new URL(path, window.location.origin).href,
+      );
+
+      setCopiedMenu(menuKey);
+
+      setTimeout(() => {
+        setCopiedMenu((current) =>
+          current === menuKey ? null : current,
+        );
+      }, 2000);
+    } catch (error) {
+      setFolderError(`URLのコピーに失敗しました。${error.message}`);
+    }
+  }
 
   // マップ・フォルダを名前で検索する．
   // 通信は増やさず，すでに取得済みの maps / childFolders を絞り込むだけ．
@@ -131,12 +159,12 @@ const [copied, setCopied] = useState(false);
     return sortOrder === "asc" ? cmp : -cmp;
   });
   const isEmpty = visibleFolders.length === 0 && visibleMaps.length === 0;
-  
+
   useEffect(() => {
-  setIsEditingFolder(false);
-  setEditingFolderName("");
-  setFolderError("");
-}, [folderId]);
+    setIsEditingFolder(false);
+    setEditingFolderName("");
+    setFolderError("");
+  }, [folderId]);
 
   // 現在ログインしているユーザーを取得する
   useEffect(() => {
@@ -558,57 +586,57 @@ const [copied, setCopied] = useState(false);
       return;
     }
 
-  setUpdatingFolder(true);
-  setFolderError("");
+    setUpdatingFolder(true);
+    setFolderError("");
 
-  try {
-    const {
-      data: { user },
-      error: userError,
-    } = await supabase.auth.getUser();
+    try {
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser();
 
-    // 保存直前にも、作成者本人か確認する
-    if (userError || !user || user.id !== folder.user_id) {
-      setFolderError("このフォルダは編集できません。");
-      return;
+      // 保存直前にも、作成者本人か確認する
+      if (userError || !user || user.id !== folder.user_id) {
+        setFolderError("このフォルダは編集できません。");
+        return;
+      }
+
+      const { data: updatedFolder, error: updateError } = await supabase
+        .from("folders")
+        .update({ name })
+        .eq("id", folder.id)
+        .eq("user_id", user.id)
+        .select()
+        .maybeSingle();
+
+      if (updateError) {
+        console.error("フォルダ名の更新に失敗", updateError);
+        setFolderError(`更新に失敗しました。${updateError.message}`);
+        return;
+      }
+
+      if (!updatedFolder) {
+        setFolderError("フォルダを更新できませんでした。");
+        return;
+      }
+
+      setFolder(updatedFolder);
+      setBreadcrumb((current) =>
+        current.map((f) =>
+          f.id === updatedFolder.id ? updatedFolder : f,
+        ),
+      );
+
+      setIsEditingFolder(false);
+    } catch (e) {
+      console.error("フォルダ名の更新中に予期しないエラー", e);
+      setFolderError(
+        `予期しないエラーが発生しました。${e?.message ?? e}`,
+      );
+    } finally {
+      setUpdatingFolder(false);
     }
-
-    const { data: updatedFolder, error: updateError } = await supabase
-      .from("folders")
-      .update({ name })
-      .eq("id", folder.id)
-      .eq("user_id", user.id)
-      .select()
-      .maybeSingle();
-
-    if (updateError) {
-      console.error("フォルダ名の更新に失敗", updateError);
-      setFolderError(`更新に失敗しました。${updateError.message}`);
-      return;
-    }
-
-    if (!updatedFolder) {
-      setFolderError("フォルダを更新できませんでした。");
-      return;
-    }
-
-    setFolder(updatedFolder);
-    setBreadcrumb((current) =>
-      current.map((f) =>
-        f.id === updatedFolder.id ? updatedFolder : f,
-      ),
-    );
-
-    setIsEditingFolder(false);
-  } catch (e) {
-    console.error("フォルダ名の更新中に予期しないエラー", e);
-    setFolderError(
-      `予期しないエラーが発生しました。${e?.message ?? e}`,
-    );
-  } finally {
-    setUpdatingFolder(false);
   }
-}
 
   // フォルダを削除する．
   // user_id が null の「持ち主なし」フォルダは誰でも削除できる仕様だが，
@@ -1065,74 +1093,135 @@ const [copied, setCopied] = useState(false);
             <div
               key={f.id}
               className="
-                flex items-center gap-3
-                rounded-2xl
-                border border-amber-100
-                bg-amber-50
-                p-4
-                shadow-sm
-                transition
-                hover:-translate-y-0.5
-                hover:shadow-md
-              "
+  relative
+  flex items-center gap-3
+  rounded-2xl
+  border border-amber-100
+  bg-amber-50
+  px-4 pb-4 pt-10
+  shadow-sm
+  transition
+  hover:-translate-y-0.5
+  hover:shadow-md
+"
             >
-              {/* フォルダ名をクリックするとフォルダを開く */}
               <Link
                 to={`/folders/${f.id}`}
-                className="flex flex-1 items-center gap-3 hover:opacity-70"
+                className="shrink-0 hover:opacity-70"
               >
                 <span className="text-2xl">📁</span>
-
-                <div>
-                  <p className="font-bold text-[#3f3a3a]">{f.name}</p>
-                  <p className="mt-0.5 text-xs text-amber-700/60">
-                    フォルダ
-                  </p>
-                </div>
               </Link>
+
+              <div className="min-w-0 flex-1">
+                <div className="flex min-w-0 items-center gap-1">
+                  <Link
+                    to={`/folders/${f.id}`}
+                    className="min-w-0 flex-1 hover:opacity-70"
+                  >
+                    <p className="truncate font-bold text-[#3f3a3a]">
+                      {f.name}
+                    </p>
+                  </Link>
+
+                  <div className="shrink-0">
+                    <ThreeDotMenu
+                      label={`${f.name}の操作メニューを開く`}
+                      isOpen={openMenu === `folder-${f.id}`}
+                      onToggle={() =>
+                        setOpenMenu((current) =>
+                          current === `folder-${f.id}`
+                            ? null
+                            : `folder-${f.id}`,
+                        )
+                      }
+                      onClose={() => setOpenMenu(null)}
+                    >
+                      <MenuItem
+                        onClick={() => copyItemUrl("folder", f.id)}
+                      >
+                        {copiedMenu === `folder-${f.id}`
+                          ? "✓ コピーしました"
+                          : "🔗 URLをコピー"}
+                      </MenuItem>
+
+                      {currentUser &&
+                        (f.user_id === null ||
+                          currentUser.id === f.user_id) && (
+                          <MenuItem
+                            danger
+                            onClick={() => {
+                              setOpenMenu(null);
+                              handleDeleteFolder(f);
+                            }}
+                          >
+                            削除
+                          </MenuItem>
+                        )}
+                    </ThreeDotMenu>
+                  </div>
+                </div>
+
+                <p className="mt-0.5 text-xs text-amber-700/60">
+                  フォルダ
+                </p>
+              </div>
 
               <button
                 type="button"
-                onClick={(e) => toggleFolderFavorite(e, f.id, f.is_favorited)}
-                className="shrink-0 transition hover:scale-110"
-                title={f.is_favorited ? "お気に入り解除" : "お気に入り登録"}
+                onClick={(e) =>
+                  toggleFolderFavorite(e, f.id, f.is_favorited)
+                }
+                className="absolute right-3 top-3 z-10 transition hover:scale-110"
+                title={
+                  f.is_favorited
+                    ? "お気に入り解除"
+                    : "お気に入り登録"
+                }
               >
                 <span
-                  className={`text-xl ${f.is_favorited ? "text-rose-500" : "text-slate-300"
+                  className={`text-xl ${f.is_favorited
+                    ? "text-rose-500"
+                    : "text-slate-300"
                     }`}
                 >
                   ♥
                 </span>
               </button>
-
             </div>
           ))}
 
           {visibleMaps.map((map) => (
             <div
               key={map.id}
-              className="group relative overflow-hidden rounded-2xl border border-rose-100 bg-white shadow-sm transition hover:-translate-y-1 hover:shadow-md"
+              className="group relative rounded-2xl border border-rose-100 bg-white shadow-sm transition hover:-translate-y-1 hover:shadow-md"
             >
-              <button
-                type="button"
-                onClick={(e) => toggleFavorite(e, map.id, map.is_favorited)}
-                className="absolute right-3 top-3 z-10 transition hover:scale-110"
-                title={map.is_favorited ? "お気に入り解除" : "お気に入り登録"}
-              >
-                <span
-                  className={`text-2xl drop-shadow ${map.is_favorited ? "text-rose-500" : "text-white/80"
-                    }`}
+              <div className="absolute right-3 top-3 z-20">
+                <button
+                  type="button"
+                  onClick={(e) =>
+                    toggleFavorite(e, map.id, map.is_favorited)
+                  }
+                  className="transition hover:scale-110"
+                  title={
+                    map.is_favorited
+                      ? "お気に入り解除"
+                      : "お気に入り登録"
+                  }
                 >
-                  ♥
-                </span>
-              </button>
+                  <span
+                    className={`text-2xl drop-shadow ${map.is_favorited
+                        ? "text-rose-500"
+                        : "text-white/80"
+                      }`}
+                  >
+                    ♥
+                  </span>
+                </button>
+              </div>
 
-              <Link
-                to={`/maps/${map.id}`}
-                className="block"
-              >
+              <Link to={`/maps/${map.id}`} className="block">
                 {map.image_url ? (
-                  <div className="overflow-hidden bg-rose-100">
+                  <div className="overflow-hidden rounded-t-2xl bg-rose-100">
                     <img
                       src={map.image_url}
                       alt={map.title}
@@ -1140,46 +1229,75 @@ const [copied, setCopied] = useState(false);
                     />
                   </div>
                 ) : (
-                  // bg-rose-50 だとほぼ白に見えてしまうため，rose-100 に変更．
-                  <div className="grid h-40 w-full place-items-center bg-rose-100 text-3xl">
+                  <div className="grid h-40 w-full place-items-center rounded-t-2xl bg-rose-100 text-3xl">
                     🗺️
                   </div>
                 )}
+              </Link>
 
-                <div className="p-4">
-                  <div className="flex items-center gap-2">
-                    <h3 className="font-bold text-[#3f3a3a] truncate">
+              <div className="p-4">
+                <div className="flex min-w-0 items-center gap-2">
+                  <Link
+                    to={`/maps/${map.id}`}
+                    className="min-w-0 flex-1 hover:opacity-70"
+                  >
+                    <h3 className="truncate font-bold text-[#3f3a3a]">
                       {map.title}
                     </h3>
+                  </Link>
 
-                    {/* 公開/非公開バッジ */}
-                    <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium ${map.is_public ? "bg-slate-100 text-slate-600" : "bg-amber-100 text-amber-800"
-                      }`}>
-                      {map.is_public ? "公開" : "非公開"}
-                    </span>
+                  <span
+                    className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium ${map.is_public
+                        ? "bg-slate-100 text-slate-600"
+                        : "bg-amber-100 text-amber-800"
+                      }`}
+                  >
+                    {map.is_public ? "公開" : "非公開"}
+                  </span>
+
+                  <div className="shrink-0">
+                    <ThreeDotMenu
+                      label={`${map.title}の操作メニューを開く`}
+                      isOpen={openMenu === `map-${map.id}`}
+                      onToggle={() =>
+                        setOpenMenu((current) =>
+                          current === `map-${map.id}`
+                            ? null
+                            : `map-${map.id}`,
+                        )
+                      }
+                      onClose={() => setOpenMenu(null)}
+                    >
+                      <MenuItem onClick={() => copyItemUrl("map", map.id)}>
+                        {copiedMenu === `map-${map.id}`
+                          ? "✓ コピーしました"
+                          : "🔗 URLをコピー"}
+                      </MenuItem>
+
+                      {currentUser?.id === map.user_id && (
+                        <MenuItem
+                          onClick={() => {
+                            setOpenMenu(null);
+                            startMovingMap(map);
+                          }}
+                        >
+                          フォルダへ移動
+                        </MenuItem>
+                      )}
+                    </ThreeDotMenu>
                   </div>
+                </div>
 
-                  {map.description && (
+                {map.description && (
+                  <Link to={`/maps/${map.id}`} className="block">
                     <p className="mt-1 line-clamp-2 text-sm text-[#817878]">
                       {map.description}
                     </p>
-                  )}
-                </div>
-
-              </Link>
-
+                  </Link>
+                )}
+              </div>
               {/* マップ作成者にだけ移動ボタンを表示する */}
-              {currentUser?.id === map.user_id && (
-                <div className="border-t border-rose-100 px-4 py-2">
-                  <button
-                    type="button"
-                    onClick={() => startMovingMap(map)}
-                    className="text-sm font-medium text-rose-600 hover:underline"
-                  >
-                    移動
-                  </button>
-                </div>
-              )}
+
             </div>
           ))}
         </div>
