@@ -229,7 +229,7 @@ export function PinPanel({
               : isEditing
                 ? "ピンを編集中"
                 : "ピンを表示中"
-            : "マップを見るためにしまう"}
+            : ""}
         </span>
 
         <span aria-hidden="true">
