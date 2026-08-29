@@ -28,6 +28,12 @@ export default function AuthButton({ centered = false }) {
       subscription.unsubscribe();
     };
   }, []);
+  function getReturnUrl() {
+    const url = new URL(window.location.href);
+    url.hash = "";
+
+    return url.href;
+  }
 
   // 入力されたメールアドレスにログイン用リンクを送信する
   async function handleLogin() {
@@ -38,8 +44,7 @@ export default function AuthButton({ centered = false }) {
       const { error } = await supabase.auth.signInWithOtp({
         email,
         options: {
-          // ★ 今開いているページのURLをメールのリンク先に指定
-          emailRedirectTo: window.location.href,
+          emailRedirectTo: getReturnUrl(),
         },
       });
 
@@ -64,8 +69,7 @@ export default function AuthButton({ centered = false }) {
       const { error } = await supabase.auth.signInWithOAuth({
         provider: "github",
         options: {
-          // origin（ドメインのみ）から href（パスを含む現在の全URL）に変更
-          redirectTo: window.location.href,
+          redirectTo: getReturnUrl(),
         },
       });
 
@@ -111,8 +115,8 @@ export default function AuthButton({ centered = false }) {
   return (
     <div
       className={`flex w-full min-w-0 items-center gap-2 ${centered
-          ? "flex-wrap justify-center"
-          : "flex-wrap justify-end sm:w-auto sm:flex-nowrap"
+        ? "flex-wrap justify-center"
+        : "flex-wrap justify-end sm:w-auto sm:flex-nowrap"
         }`}
     >
       <input
