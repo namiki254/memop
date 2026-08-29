@@ -239,7 +239,7 @@ export default function MapDetail() {
     const isCreatorMatch =
       !showOnlyMyPins || pin.user_id === currentUser?.id;
 
-    return isTypeMatch && isTitleMatch;
+    return isTypeMatch && isTitleMatch && isCreatorMatch;
   });
   const displayPins = visiblePins.map((pin) =>
     isEditingPin && pin.id === selectedPin?.id
