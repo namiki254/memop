@@ -66,6 +66,7 @@ export default function MapDetail() {
 
   // ボタン種類のピン（#67）の移動先として選べる，全マップの一覧．
   const [allMaps, setAllMaps] = useState([]);
+  const [mapOptionFolders, setMapOptionFolders] = useState([]);
   // 今ログインしている人が，このマップの作成者かどうか（削除の許可判定に使う）
   const isMapOwner = currentUser?.id === map?.user_id;
   const isUnownedMap = map?.user_id === null;
@@ -363,21 +364,41 @@ export default function MapDetail() {
 
   // ボタンの移動先ピッカーに使う，全マップの一覧．最初に1回だけ取る．
   useEffect(() => {
-    async function loadAllMaps() {
-      const { data, error: allMapsError } = await supabase
-        .from("maps")
-        .select("id, title")
-        .eq("is_public", true)   // is_publicがtrueのものだけを選択肢として取得
-        .order("title");
+    async function loadMapOptions() {
+      const [mapsResult, foldersResult] = await Promise.all([
+        supabase
+          .from("maps")
+          .select("id, title, folder_id, user_id")
+          .order("title"),
 
-      if (!allMapsError) {
-        setAllMaps(data ?? []);
+        supabase
+          .from("folders")
+          .select("id, name, parent_folder_id")
+          .order("name"),
+      ]);
+
+      if (mapsResult.error) {
+        console.error(
+          "移動先マップの取得に失敗",
+          mapsResult.error,
+        );
+        return;
       }
+
+      if (foldersResult.error) {
+        console.error(
+          "フォルダの取得に失敗",
+          foldersResult.error,
+        );
+        return;
+      }
+
+      setAllMaps(mapsResult.data ?? []);
+      setMapOptionFolders(foldersResult.data ?? []);
     }
 
-    loadAllMaps();
+    loadMapOptions();
   }, []);
-
   // 現在ログインしているユーザーを取得する
   useEffect(() => {
     async function loadCurrentUser() {
@@ -845,6 +866,40 @@ export default function MapDetail() {
     (sibling) => sibling.is_public || sibling.user_id === currentUser?.id,
   );
 
+  const folderById = new Map(
+    mapOptionFolders.map((folder) => [folder.id, folder]),
+  );
+
+  function createMapOptionLabel(targetMap) {
+    const folderNames = [];
+    const visited = new Set();
+    let folderId = targetMap.folder_id;
+
+    while (folderId && !visited.has(folderId)) {
+      visited.add(folderId);
+
+      const targetFolder = folderById.get(folderId);
+      if (!targetFolder) break;
+
+      folderNames.unshift(targetFolder.name);
+      folderId = targetFolder.parent_folder_id;
+    }
+
+    return ["ホーム", ...folderNames, targetMap.title].join(
+      " / ",
+    );
+  }
+
+  const destinationMapOptions = allMaps
+    .filter((targetMap) => targetMap.id !== id)
+    .map((targetMap) => ({
+      ...targetMap,
+      hierarchyLabel: createMapOptionLabel(targetMap),
+    }))
+    .sort((a, b) =>
+      a.hierarchyLabel.localeCompare(b.hierarchyLabel, "ja"),
+    );
+
   return (
 
     <div className="relative flex h-full min-w-0 bg-rose-100">
@@ -1170,7 +1225,7 @@ export default function MapDetail() {
             currentUser={currentUser}
             saving={savingPin}
             error={pinError}
-            mapOptions={allMaps.filter((m) => m.id !== id)}
+            mapOptions={destinationMapOptions}
             onSave={handleSavePin}
             onClose={closePanel}
             onNavigate={handleNavigateToMap}

@@ -67,7 +67,19 @@ export function PinPanel({
   // ピンの種類（メモ／ボタン）と，ボタンのときの移動先（#67）
   const [kind, setKind] = useState("pin");
   const [linkMapId, setLinkMapId] = useState("");
-  const firstMapOptionId = mapOptions[0]?.id ?? "";
+  const [showOnlyMyMaps, setShowOnlyMyMaps] = useState(false);
+
+  const visibleMapOptions = showOnlyMyMaps
+    ? mapOptions.filter(
+      (option) => option.user_id === currentUser?.id,
+    )
+    : mapOptions;
+
+  const firstMapOptionId = visibleMapOptions[0]?.id ?? "";
+
+  const selectedMapIsVisible = visibleMapOptions.some(
+    (option) => option.id === linkMapId,
+  );
   // 編集中のモードを追加
   const [customPinType, setCustomPinType] = useState("");
 
@@ -110,10 +122,10 @@ export function PinPanel({
   ]);
 
   useEffect(() => {
-    if (!linkMapId && firstMapOptionId) {
-      setLinkMapId(firstMapOptionId);
-    }
-  }, [linkMapId, firstMapOptionId]);
+    if (linkMapId && selectedMapIsVisible) return;
+
+    setLinkMapId(firstMapOptionId);
+  }, [linkMapId, selectedMapIsVisible, firstMapOptionId]);
 
   useEffect(() => {
     if (!isNew && !isEditing) return;
@@ -180,6 +192,9 @@ export function PinPanel({
   const destinationMap = mapOptions.find(
     (option) => option.id === pin?.link_map_id,
   );
+
+  const fieldClassName =
+  "w-full rounded-xl border border-[#E9DAD5] bg-[#FFFCFA] px-3 py-2.5 text-sm text-[#3F3A3A] outline-none transition placeholder:text-[#B6AAAA] focus:border-[#F6A3AD] focus:ring-4 focus:ring-[#FFF0F1] disabled:bg-[#F4F0EE] disabled:text-[#9A908D]";
 
   return (
     <div
@@ -307,24 +322,45 @@ export function PinPanel({
             />
 
             {kind === "button" ? (
-              mapOptions.length === 0 ? (
-                <p className="mt-2 text-xs text-slate-500">
-                  移動先に選べるマップがありません．
-                </p>
-              ) : (
-                <select
-                  value={linkMapId}
-                  onChange={(e) => setLinkMapId(e.target.value)}
-                  disabled={saving}
-                  className="mt-2 w-full rounded-xl border border-rose-100 bg-rose-50/30 px-3 py-2 text-sm outline-none focus:border-rose-300 focus:ring-4 focus:ring-rose-100 disabled:bg-stone-100"
-                >
-                  {mapOptions.map((option) => (
-                    <option key={option.id} value={option.id}>
-                      {option.title}
-                    </option>
-                  ))}
-                </select>
-              )
+              <>
+                <label className="mt-3 flex cursor-pointer items-center gap-2 text-xs text-[#685F5D]">
+                  <input
+                    type="checkbox"
+                    checked={showOnlyMyMaps}
+                    onChange={(event) =>
+                      setShowOnlyMyMaps(event.target.checked)
+                    }
+                    disabled={saving || !currentUser}
+                    className="h-4 w-4 rounded border-slate-300 text-rose-500 focus:ring-rose-400"
+                  />
+
+                  自分が作成したマップのみ
+                </label>
+
+                {visibleMapOptions.length === 0 ? (
+                  <p className="mt-3 rounded-xl bg-[#F8F3F0] p-3 text-xs text-[#817878]">
+                    {showOnlyMyMaps
+                      ? "自分が作成したマップがありません．"
+                      : "移動先に選べるマップがありません．"}
+                  </p>
+                ) : (
+                  <select
+                    value={linkMapId}
+                    onChange={(event) =>
+                      setLinkMapId(event.target.value)
+                    }
+                    disabled={saving}
+                    className={`mt-3 ${fieldClassName}`}
+                  >
+                    {visibleMapOptions.map((option) => (
+                      <option key={option.id} value={option.id}>
+                        {option.hierarchyLabel}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </>
+
             ) : (
               <>
                 <textarea
