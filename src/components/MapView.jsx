@@ -230,7 +230,7 @@ export function MapView({ map, pins = [], pendingPin = null, onPinClick, onMapCl
       className="relative h-full w-full min-w-0 max-w-full overflow-auto p-4"
     >
       {/* ズームボタン（左上に絶対配置＆クリック透過制御） */}
-      <div className="sticky top-2 left-2 z-20 w-fit pointer-events-none">
+      <div className="pointer-events-none sticky top-[calc(100%_-_3.5rem)] z-20 ml-auto w-fit">
         <div className="flex gap-1 rounded-md bg-white/90 p-1 shadow backdrop-blur-sm pointer-events-auto">
           <button
             type="button"
