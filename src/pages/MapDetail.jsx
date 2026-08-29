@@ -849,17 +849,17 @@ export default function MapDetail() {
 
     <div className="relative flex h-full min-w-0 bg-rose-100">
       <div className="flex h-full min-w-0 flex-1 flex-col">
-        <div className="border-b border-rose-200 bg-white px-4 py-3 sm:px-6">
+        <div className="border-b border-rose-200 bg-white px-3 py-2 sm:px-4">
           <Link
             to={backHref}
-            className="mb-2 inline-flex items-center gap-1 text-sm font-medium text-rose-600 hover:underline"
+            className="mb-1 inline-flex items-center gap-1 text-xs font-medium text-rose-600 hover:underline"
           >
             <span aria-hidden="true">←</span>
             {backLabel}
           </Link>
 
           {/* パンくずリスト */}
-          <p className="mb-2 text-sm text-slate-500">
+          <p className="mb-1 truncate whitespace-nowrap text-xs text-slate-500">
             <Link to="/" className="hover:underline">
               ホーム
             </Link>
@@ -941,15 +941,19 @@ export default function MapDetail() {
           ) : (
             <>
               {/* タイトルとボタン類を横並びにするためにflexを使用 */}
-              <div className="flex flex-col items-start gap-2 sm:flex-row sm:items-center sm:justify-between">
-                <div className="flex w-full min-w-0 flex-wrap items-center gap-2 sm:w-auto sm:flex-1">
+              <div className="flex flex-col items-start gap-1 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex w-full min-w-0 flex-wrap items-center gap-1 sm:w-auto sm:flex-1">
                   <h2 className="min-w-0 break-words text-lg font-bold text-slate-800">
                     {map.title}
                   </h2>
 
                   {/* 公開/非公開バッジ */}
-                  <span className={`shrink-0 rounded-md px-3 py-1.5 text-sm font-medium ${map.is_public ? "bg-slate-100 text-slate-700" : "bg-amber-100 text-amber-800"
-                    }`}>
+                  <span
+                    className={`shrink-0 rounded px-2 py-0.5 text-xs font-medium ${map.is_public
+                      ? "bg-slate-100 text-slate-700"
+                      : "bg-amber-100 text-amber-800"
+                      }`}
+                  >
                     {map.is_public ? "公開" : "非公開"}
                   </span>
                 </div>
@@ -1034,14 +1038,25 @@ export default function MapDetail() {
           )}
 
           {/* ピンの種類ごとの表示・非表示の切替，タイトル検索 */}
-          {/* ピンのタイトル検索と表示フィルター */}
-          <div className="mt-3 border-t border-slate-100 pt-3">
+
+        </div>
+
+        <div className="relative min-h-0 min-w-0 flex-1 overflow-hidden">
+          <div className="absolute left-3 top-3 z-30">
             <button
               type="button"
               onClick={() => setFiltersOpen((current) => !current)}
               aria-expanded={filtersOpen}
               aria-controls="map-filters"
-              className="flex w-full items-center justify-between rounded-md bg-slate-50 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 sm:w-auto"
+              className="
+        flex items-center justify-between
+        rounded-md border border-slate-200
+        bg-white/95
+        px-3 py-2
+        text-xs font-medium text-slate-700
+        shadow-md backdrop-blur
+        hover:bg-slate-50
+      "
             >
               <span>検索・表示フィルタ</span>
               <span aria-hidden="true" className="ml-3">
@@ -1050,7 +1065,22 @@ export default function MapDetail() {
             </button>
 
             {filtersOpen && (
-              <div id="map-filters" className="mt-3 space-y-4">
+              <div
+                id="map-filters"
+                className="
+          mt-2
+          max-h-[70vh]
+          w-72
+          max-w-[calc(100vw-1.5rem)]
+          space-y-4
+          overflow-y-auto
+          rounded-lg
+          border border-slate-200
+          bg-white
+          p-3
+          shadow-xl
+        "
+              >
                 <label className="block">
                   <span className="block text-xs font-semibold text-slate-600">
                     タイトル検索
@@ -1061,7 +1091,7 @@ export default function MapDetail() {
                     placeholder="ピンを検索..."
                     value={searchQuery}
                     onChange={(event) => setSearchQuery(event.target.value)}
-                    className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none sm:max-w-xs"
+                    className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
                   />
                 </label>
 
@@ -1115,13 +1145,6 @@ export default function MapDetail() {
               </div>
             )}
           </div>
-
-          <p className="mt-1 text-xs text-slate-400">
-            画像をクリックするとピンを立てられます．
-          </p>
-        </div>
-
-        <div className="min-h-0 min-w-0 flex-1 overflow-hidden">
           <MapView
             // マップを切り替えたときにズーム倍率(scale)をリセットするため，
             // マップごとに別インスタンスとして作り直す．
