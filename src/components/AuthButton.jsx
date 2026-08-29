@@ -94,10 +94,30 @@ export default function AuthButton({ centered = false }) {
 
   // ログイン済みの場合
   if (session) {
+    const metadata = session.user.user_metadata ?? {};
+
+    const githubIdentity = session.user.identities?.find(
+      (identity) => identity.provider === "github",
+    );
+
+    const identityData = githubIdentity?.identity_data ?? {};
+
+    const githubUsername =
+      metadata.user_name ??
+      metadata.preferred_username ??
+      identityData.user_name ??
+      identityData.preferred_username ??
+      metadata.name ??
+      identityData.name;
+
+    const displayName = githubUsername
+      ? `@${githubUsername}`
+      : session.user.email ?? "ログイン中";
+
     return (
       <div className="flex min-w-0 shrink-0 items-center gap-2">
         <span className="hidden max-w-48 truncate text-sm text-slate-600 sm:inline">
-          {session.user.email}
+          {displayName}
         </span>
 
         <button
