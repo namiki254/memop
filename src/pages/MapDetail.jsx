@@ -5,7 +5,7 @@ import Loading from "../components/Loading";
 import ErrorMessage from "../components/ErrorMessage";
 import { MapView } from "../components/MapView";
 import { PinPanel } from "../components/PinPanel";
-import { PIN_TYPES } from "../lib/pinTypes";
+import { PIN_TYPES, getPinEmoji } from "../lib/pinTypes";
 import { normalizeSearchText } from "../lib/searchText";
 import SaveToMyListButton from "../components/SaveToMyListButton";
 import ThreeDotMenu, {
@@ -71,9 +71,18 @@ export default function MapDetail() {
   const isMapOwner = currentUser?.id === map?.user_id;
   const isUnownedMap = map?.user_id === null;
 
+  const [isPinListOpen, setIsPinListOpen] = useState(false);
+
   // 持ち主なしマップは誰でも編集できる仕様だが，未ログインの匿名ユーザーには許可しない．
   const canEditMap =
     isMapOwner || (isUnownedMap && Boolean(currentUser));
+
+  function handlePinListClick(pin) {
+    setPinError("");
+    setIsEditingPin(false);
+    setSelectedPin(pin);
+    setIsPinListOpen(false);
+  }
 
   // ピンの編集・削除ができるか（持ち主なしピンはログイン済みなら誰でも）．
   // userId は呼び出し側で supabase.auth.getUser() から取り直した最新の値を渡す．
@@ -1114,14 +1123,14 @@ export default function MapDetail() {
               aria-expanded={filtersOpen}
               aria-controls="map-filters"
               className="
-        flex items-center justify-between
-        rounded-md border border-slate-200
-        bg-white/95
-        px-3 py-2
-        text-xs font-medium text-slate-700
-        shadow-md backdrop-blur
-        hover:bg-slate-50
-      "
+                flex items-center justify-between
+                rounded-md border border-slate-200
+                bg-white/95
+                px-3 py-2
+                text-xs font-medium text-slate-700
+                shadow-md backdrop-blur
+                hover:bg-slate-50
+              "
             >
               <span>検索・表示フィルタ</span>
               <span aria-hidden="true" className="ml-3">
@@ -1133,18 +1142,18 @@ export default function MapDetail() {
               <div
                 id="map-filters"
                 className="
-          mt-2
-          max-h-[70vh]
-          w-72
-          max-w-[calc(100vw-1.5rem)]
-          space-y-4
-          overflow-y-auto
-          rounded-lg
-          border border-slate-200
-          bg-white
-          p-3
-          shadow-xl
-        "
+                  mt-2
+                  max-h-[70vh]
+                  w-72
+                  max-w-[calc(100vw-1.5rem)]
+                  space-y-4
+                  overflow-y-auto
+                  rounded-lg
+                  border border-slate-200
+                  bg-white
+                  p-3
+                  shadow-xl
+                "
               >
                 <label className="block">
                   <span className="block text-xs font-semibold text-slate-600">
@@ -1219,6 +1228,58 @@ export default function MapDetail() {
                   </label>
                 )}
               </div>
+            )}
+          </div>
+          <div className="absolute right-3 top-3 z-30 flex flex-col items-end">
+            <button
+              type="button"
+              onClick={() => setIsPinListOpen((open) => !open)}
+              aria-expanded={isPinListOpen}
+              className="flex items-center gap-2 rounded-full bg-white px-3 py-2 text-sm font-bold text-[#685F5D] shadow-lg transition hover:bg-[#FFF8F8]"
+            >
+              <span aria-hidden="true">{isPinListOpen ? "✕" : "☰"}</span>
+              <span>ピン一覧</span>
+            </button>
+
+            {isPinListOpen && (
+              <aside className="mt-2 w-64 max-w-[calc(100vw-1.5rem)] overflow-hidden rounded-2xl border border-[#F1E4DF] bg-white/95 shadow-xl backdrop-blur-sm">
+                <div className="border-b border-[#F1E4DF] px-3 py-2">
+                  <p className="text-xs font-bold text-[#817878]">
+                    ピン一覧（{visiblePins.length}件）
+                  </p>
+                </div>
+
+                {visiblePins.length > 0 ? (
+                  <ul className="max-h-72 space-y-1 overflow-y-auto p-2">
+                    {visiblePins.map((pin) => (
+                      <li key={pin.id}>
+                        <button
+                          type="button"
+                          onClick={() => handlePinListClick(pin)}
+                          className={`flex w-full min-w-0 items-center gap-2 rounded-xl px-3 py-2 text-left text-sm transition ${selectedPin?.id === pin.id
+                              ? "bg-[#FFF0F1] text-[#C95765]"
+                              : "text-[#685F5D] hover:bg-[#FAF6F3]"
+                            }`}
+                        >
+                          <span className="shrink-0" aria-hidden="true">
+                            {pin.kind === "button"
+                              ? "🔗"
+                              : getPinEmoji(pin.pin_type)}
+                          </span>
+
+                          <span className="min-w-0 flex-1 truncate font-semibold">
+                            {pin.title}
+                          </span>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="px-3 py-4 text-center text-xs text-[#9A908D]">
+                    表示できるピンがありません
+                  </p>
+                )}
+              </aside>
             )}
           </div>
           <MapView
