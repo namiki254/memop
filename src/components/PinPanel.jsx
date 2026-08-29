@@ -122,10 +122,14 @@ export function PinPanel({
   ]);
 
   useEffect(() => {
-    if (linkMapId && selectedMapIsVisible) return;
+    // 既存ボタンの編集時は、保存済みの移動先を絶対に変更しない
+    if (!isNew) return;
 
-    setLinkMapId(firstMapOptionId);
-  }, [linkMapId, selectedMapIsVisible, firstMapOptionId]);
+    // 新規追加で未選択の場合だけ、先頭マップを選択する
+    if (!linkMapId && firstMapOptionId) {
+      setLinkMapId(firstMapOptionId);
+    }
+  }, [isNew, linkMapId, firstMapOptionId]);
 
   useEffect(() => {
     if (!isNew && !isEditing) return;
@@ -177,6 +181,7 @@ export function PinPanel({
     setContent(pin?.content ?? "");
     setKind(pin?.kind ?? "pin");
     setLinkMapId(pin?.link_map_id ?? mapOptions[0]?.id ?? "");
+    setShowOnlyMyMaps(false);
 
     // 既存4種類に含まれない場合は自由入力として元に戻す
     const isCustomPinType =
@@ -194,7 +199,7 @@ export function PinPanel({
   );
 
   const fieldClassName =
-  "w-full rounded-xl border border-[#E9DAD5] bg-[#FFFCFA] px-3 py-2.5 text-sm text-[#3F3A3A] outline-none transition placeholder:text-[#B6AAAA] focus:border-[#F6A3AD] focus:ring-4 focus:ring-[#FFF0F1] disabled:bg-[#F4F0EE] disabled:text-[#9A908D]";
+    "w-full rounded-xl border border-[#E9DAD5] bg-[#FFFCFA] px-3 py-2.5 text-sm text-[#3F3A3A] outline-none transition placeholder:text-[#B6AAAA] focus:border-[#F6A3AD] focus:ring-4 focus:ring-[#FFF0F1] disabled:bg-[#F4F0EE] disabled:text-[#9A908D]";
 
   return (
     <div
@@ -327,9 +332,24 @@ export function PinPanel({
                   <input
                     type="checkbox"
                     checked={showOnlyMyMaps}
-                    onChange={(event) =>
-                      setShowOnlyMyMaps(event.target.checked)
-                    }
+                    onChange={(event) => {
+                      const checked = event.target.checked;
+                      setShowOnlyMyMaps(checked);
+
+                      if (!checked) return;
+
+                      const myMaps = mapOptions.filter(
+                        (option) => option.user_id === currentUser?.id,
+                      );
+
+                      const currentSelectionIsMine = myMaps.some(
+                        (option) => option.id === linkMapId,
+                      );
+
+                      if (!currentSelectionIsMine) {
+                        setLinkMapId(myMaps[0]?.id ?? "");
+                      }
+                    }}
                     disabled={saving || !currentUser}
                     className="h-4 w-4 rounded border-slate-300 text-rose-500 focus:ring-rose-400"
                   />

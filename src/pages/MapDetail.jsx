@@ -543,7 +543,11 @@ export default function MapDetail() {
       return;
     }
 
-    navigate(`/maps/${linkMapId}`);
+    window.open(
+      `/maps/${linkMapId}`,
+      "_blank",
+      "noopener,noreferrer",
+    );
   }
 
   function closePanel() {
