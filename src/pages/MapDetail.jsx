@@ -130,6 +130,9 @@ export default function MapDetail() {
   const [defaultTypeVisible, setDefaultTypeVisible] =
     useState(true);
 
+  // 自分が作成したピンだけ表示する
+  const [showOnlyMyPins, setShowOnlyMyPins] = useState(false);
+
   const [typeVisibility, setTypeVisibility] =
     useState({});
   //その種類が表示対象か調べる
@@ -223,6 +226,9 @@ export default function MapDetail() {
     const isTitleMatch = normalizeSearchText(pin?.title).includes(
       normalizeSearchText(searchQuery.trim()),
     );
+
+    const isCreatorMatch =
+      !showOnlyMyPins || pin.user_id === currentUser?.id;
 
     return isTypeMatch && isTitleMatch;
   });
@@ -1201,6 +1207,17 @@ export default function MapDetail() {
                     ))}
                   </div>
                 </div>
+                {currentUser && (
+                  <label className="flex cursor-pointer items-center gap-1.5 rounded-full bg-white px-2.5 py-1.5 text-xs font-semibold text-[#685F5D] transition hover:bg-[#FFF8F8]">
+                    <input
+                      type="checkbox"
+                      checked={showOnlyMyPins}
+                      onChange={(e) => setShowOnlyMyPins(e.target.checked)}
+                      className="accent-[#F47281]"
+                    />
+                    <span>自分のピンのみ表示</span>
+                  </label>
+                )}
               </div>
             )}
           </div>
