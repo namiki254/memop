@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import Loading from "../components/Loading";
 import ErrorMessage from "../components/ErrorMessage";
+import AuthButton from "../components/AuthButton";
 
 import { normalizeSearchText } from "../lib/searchText";
 
@@ -806,11 +807,24 @@ export default function MapList() {
 
   if (!folderId && !currentUser) {
     return (
-      <div className="h-full overflow-auto bg-[#fffaf5] p-6">
-        <h2 className="text-2xl font-bold text-slate-800">マップ一覧</h2>
-        <p className="mt-6 text-slate-500">
-          マップ一覧を見るにはログインしてください。
-        </p>
+      <div className="grid h-full place-items-center bg-[#fffaf5] px-4 py-8">
+        <div className="w-full max-w-md rounded-3xl border border-rose-100 bg-white p-6 text-center shadow-sm">
+          <span aria-hidden="true" className="text-4xl">
+            📌
+          </span>
+
+          <h2 className="mt-3 text-xl font-bold text-slate-800">
+            ログインしてください
+          </h2>
+
+          <p className="mt-2 text-sm text-slate-500">
+            メールアドレスまたはGitHubでログインしてください。
+          </p>
+
+          <div className="mt-5">
+            <AuthButton centered />
+          </div>
+        </div>
       </div>
     );
   }
@@ -1104,9 +1118,9 @@ export default function MapList() {
                 hover:-translate-y-0.5
                 hover:shadow-md
                 ${openMenu === `folder-${f.id}`
-                                ? "z-30"
-                                : "z-0"
-                              }
+                  ? "z-30"
+                  : "z-0"
+                }
               `}
             >
               <Link
@@ -1197,11 +1211,10 @@ export default function MapList() {
           {visibleMaps.map((map) => (
             <div
               key={map.id}
-              className={`group relative rounded-2xl border border-rose-100 bg-white shadow-sm transition hover:-translate-y-1 hover:shadow-md ${
-                openMenu === `map-${map.id}`
-                  ? "z-30"
-                  : "z-0"
-              }`}
+              className={`group relative rounded-2xl border border-rose-100 bg-white shadow-sm transition hover:-translate-y-1 hover:shadow-md ${openMenu === `map-${map.id}`
+                ? "z-30"
+                : "z-0"
+                }`}
             >
               <div className="absolute right-3 top-3 z-20">
                 <button

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { supabase } from "../lib/supabase.js";
 
-export default function AuthButton() {
+export default function AuthButton({ centered = false }) {
   // ログインに使うメールアドレスを保持する
   const [email, setEmail] = useState("");
 
@@ -28,6 +28,12 @@ export default function AuthButton() {
       subscription.unsubscribe();
     };
   }, []);
+  function getReturnUrl() {
+    const url = new URL(window.location.href);
+    url.hash = "";
+
+    return url.href;
+  }
 
   // 入力されたメールアドレスにログイン用リンクを送信する
   async function handleLogin() {
@@ -38,8 +44,7 @@ export default function AuthButton() {
       const { error } = await supabase.auth.signInWithOtp({
         email,
         options: {
-          // ★ 今開いているページのURLをメールのリンク先に指定
-          emailRedirectTo: window.location.href,
+          emailRedirectTo: getReturnUrl(),
         },
       });
 
@@ -64,8 +69,7 @@ export default function AuthButton() {
       const { error } = await supabase.auth.signInWithOAuth({
         provider: "github",
         options: {
-          // origin（ドメインのみ）から href（パスを含む現在の全URL）に変更
-          redirectTo: window.location.href,
+          redirectTo: getReturnUrl(),
         },
       });
 
@@ -109,13 +113,18 @@ export default function AuthButton() {
 
   // ログインしていない場合
   return (
-    <div className="flex w-full min-w-0 flex-wrap items-center justify-end gap-2 sm:w-auto sm:flex-nowrap">
+    <div
+      className={`flex w-full min-w-0 items-center gap-2 ${centered
+        ? "flex-wrap justify-center"
+        : "flex-wrap justify-end sm:w-auto sm:flex-nowrap"
+        }`}
+    >
       <input
         type="email"
         value={email}
         onChange={(e) => setEmail(e.target.value)}
-        placeholder="メールアドレスを入力してログイン"
-        className="min-w-0 flex-1 rounded-full border border-slate-300 px-2 py-1 text-sm"
+        placeholder="email"
+        className="min-w-0 flex-1 rounded-full border border-slate-300 px-2 py-1 text-xs"
       />
 
       <button
@@ -127,11 +136,21 @@ export default function AuthButton() {
         ログイン
       </button>
 
+      {centered && (
+        <div className="flex basis-full items-center gap-3 py-0.5 text-[11px] text-slate-800">
+          <span className="h-px flex-1 bg-slate-200" />
+          <span>または</span>
+          <span className="h-px flex-1 bg-slate-200" />
+        </div>
+      )}
+
       <button
         type="button"
         onClick={handleGitHubLogin}
         disabled={submitting}
-        className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-400 focus:ring-offset-2 active:scale-95 disabled:opacity-50"
+        className={`inline-flex shrink-0 items-center justify-center gap-2 rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-400 focus:ring-offset-2 active:scale-95 disabled:opacity-50
+          ${centered ? "basis-full" : "basis-full sm:basis-auto"
+          }`}
       >
         <svg
           viewBox="0 0 24 24"
