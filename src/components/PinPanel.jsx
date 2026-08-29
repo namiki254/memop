@@ -485,10 +485,18 @@ export function PinPanel({
         ) : (
           <div>
             <div className="flex items-start justify-between gap-3">
-              <p className="font-bold break-words text-[#3F3A3A]">
-                {pin.kind === "button" ? "🔗" : getPinEmoji(pin.pin_type)}{" "}
-                {pin.title}
-              </p>
+              <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                <p className="font-bold break-words text-[#3F3A3A]">
+                  {pin.kind === "button" ? "🔗" : getPinEmoji(pin.pin_type)}{" "}
+                  {pin.title}
+                </p>
+
+                {pin.creator_username && (
+                  <span className="shrink-0 text-xs font-medium text-slate-400">
+                    @{pin.creator_username.replace(/^@/, "")}
+                  </span>
+                )}
+              </div>
               <button
                 type="button"
                 onClick={onClose}
