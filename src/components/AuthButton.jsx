@@ -109,20 +109,20 @@ export default function AuthButton() {
 
   // ログインしていない場合
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex w-full min-w-0 flex-wrap items-center justify-end gap-2 sm:w-auto sm:flex-nowrap">
       <input
         type="email"
         value={email}
         onChange={(e) => setEmail(e.target.value)}
-        placeholder="メールアドレス"
-        className="rounded border border-slate-300 px-2 py-1 text-sm"
+        placeholder="メールアドレスを入力してログイン"
+        className="min-w-0 flex-1 rounded-full border border-slate-300 px-2 py-1 text-sm"
       />
 
       <button
         type="button"
         onClick={handleLogin}
         disabled={submitting}
-        className="rounded bg-slate-800 px-3 py-1.5 text-sm text-white disabled:opacity-50"
+        className="shrink-0 whitespace-nowrap rounded-full bg-[#FFF0F1] px-3 py-1.5 text-xs font-bold text-[#C95765] transition hover:bg-[#FFDDE1] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#FFF0F1]"
       >
         ログイン
       </button>
@@ -131,7 +131,7 @@ export default function AuthButton() {
         type="button"
         onClick={handleGitHubLogin}
         disabled={submitting}
-        className="inline-flex items-center justify-center gap-2 rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-400 focus:ring-offset-2 active:scale-95 disabled:opacity-50"
+        className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-400 focus:ring-offset-2 active:scale-95 disabled:opacity-50"
       >
         <svg
           viewBox="0 0 24 24"
@@ -141,7 +141,7 @@ export default function AuthButton() {
           <path d="M12 .7a12 12 0 0 0-3.8 23.4c.6.1.8-.3.8-.6v-2.1c-3.3.7-4-1.4-4-1.4-.5-1.4-1.3-1.7-1.3-1.7-1.1-.7.1-.7.1-.7 1.2.1 1.8 1.2 1.8 1.2 1.1 1.8 2.8 1.3 3.5 1 .1-.8.4-1.3.8-1.6-2.6-.3-5.4-1.3-5.4-5.9 0-1.3.5-2.4 1.2-3.2-.1-.3-.5-1.5.1-3.2 0 0 1-.3 3.3 1.2a11.5 11.5 0 0 1 6 0C17.5 5.8 18.5 6 18.5 6c.6 1.7.2 2.9.1 3.2.8.8 1.2 1.9 1.2 3.2 0 4.6-2.8 5.6-5.4 5.9.4.4.8 1.1.8 2.2v3c0 .3.2.7.8.6A12 12 0 0 0 12 .7Z" />
         </svg>
 
-        GitHubでログイン
+        GitHubログイン
       </button>
     </div>
   );

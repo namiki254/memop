@@ -1092,18 +1092,22 @@ export default function MapList() {
           {visibleFolders.map((f) => (
             <div
               key={f.id}
-              className="
-  relative
-  flex items-center gap-3
-  rounded-2xl
-  border border-amber-100
-  bg-amber-50
-  px-4 pb-4 pt-10
-  shadow-sm
-  transition
-  hover:-translate-y-0.5
-  hover:shadow-md
-"
+              className={`
+                relative
+                flex items-center gap-3
+                rounded-2xl
+                border border-amber-100
+                bg-amber-50
+                px-4 pb-4 pt-10
+                shadow-sm
+                transition
+                hover:-translate-y-0.5
+                hover:shadow-md
+                ${openMenu === `folder-${f.id}`
+                                ? "z-30"
+                                : "z-0"
+                              }
+              `}
             >
               <Link
                 to={`/folders/${f.id}`}
@@ -1193,7 +1197,11 @@ export default function MapList() {
           {visibleMaps.map((map) => (
             <div
               key={map.id}
-              className="group relative rounded-2xl border border-rose-100 bg-white shadow-sm transition hover:-translate-y-1 hover:shadow-md"
+              className={`group relative rounded-2xl border border-rose-100 bg-white shadow-sm transition hover:-translate-y-1 hover:shadow-md ${
+                openMenu === `map-${map.id}`
+                  ? "z-30"
+                  : "z-0"
+              }`}
             >
               <div className="absolute right-3 top-3 z-20">
                 <button
@@ -1210,8 +1218,8 @@ export default function MapList() {
                 >
                   <span
                     className={`text-2xl drop-shadow ${map.is_favorited
-                        ? "text-rose-500"
-                        : "text-white/80"
+                      ? "text-rose-500"
+                      : "text-white/80"
                       }`}
                   >
                     ♥
@@ -1248,8 +1256,8 @@ export default function MapList() {
 
                   <span
                     className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium ${map.is_public
-                        ? "bg-slate-100 text-slate-600"
-                        : "bg-amber-100 text-amber-800"
+                      ? "bg-slate-100 text-slate-600"
+                      : "bg-amber-100 text-amber-800"
                       }`}
                   >
                     {map.is_public ? "公開" : "非公開"}
