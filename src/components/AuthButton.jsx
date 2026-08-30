@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { supabase } from "../lib/supabase.js";
+import { getGithubUsername } from "../lib/displayName.js";
 
 export default function AuthButton({ centered = false }) {
   // ログインに使うメールアドレスを保持する
@@ -94,21 +95,7 @@ export default function AuthButton({ centered = false }) {
 
   // ログイン済みの場合
   if (session) {
-    const metadata = session.user.user_metadata ?? {};
-
-    const githubIdentity = session.user.identities?.find(
-      (identity) => identity.provider === "github",
-    );
-
-    const identityData = githubIdentity?.identity_data ?? {};
-
-    const githubUsername =
-      metadata.user_name ??
-      metadata.preferred_username ??
-      identityData.user_name ??
-      identityData.preferred_username ??
-      metadata.name ??
-      identityData.name;
+    const githubUsername = getGithubUsername(session.user);
 
     const displayName = githubUsername
       ? `@${githubUsername}`
