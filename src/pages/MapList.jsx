@@ -264,15 +264,70 @@ export default function MapList() {
           return;
         }
 
-        // 移動先の選択欄に表示する、すべてのフォルダを取得する
-        const { data: foldersForMove, error: foldersForMoveError } =
-          await supabase
-            .from("folders")
-            .select("id, name, parent_folder_id")
-            .order("name");
+        // 移動先の選択欄に表示するフォルダを取得する．
+        // 全ユーザーの全フォルダを無条件に見せると，自分が一度も開いたことのない
+        // 他人のフォルダの名前・階層構造まで見えてしまうため，
+        // 「自分の・持ち主なし・保存済み」のフォルダだけに絞る．
+        let foldersForMoveQuery = supabase
+          .from("folders")
+          .select("id, name, parent_folder_id, user_id")
+          .order("name");
+
+        foldersForMoveQuery = currentUser
+          ? foldersForMoveQuery.or(
+            `user_id.eq.${currentUser.id},user_id.is.null`,
+          )
+          : foldersForMoveQuery.is("user_id", null);
+
+        const { data: ownFoldersForMove, error: foldersForMoveError } =
+          await foldersForMoveQuery;
 
         if (cancelled) return;
         if (foldersForMoveError) throw foldersForMoveError;
+
+        let savedFoldersForMove = [];
+
+        if (currentUser) {
+          const {
+            data: savedFolderRowsForMove,
+            error: savedFolderRowsForMoveError,
+          } = await supabase
+            .from("saved_folders")
+            .select("folder_id")
+            .eq("user_id", currentUser.id);
+
+          if (cancelled) return;
+          if (savedFolderRowsForMoveError) throw savedFolderRowsForMoveError;
+
+          const savedFolderIdsForMove = (savedFolderRowsForMove ?? []).map(
+            (row) => row.folder_id,
+          );
+
+          if (savedFolderIdsForMove.length > 0) {
+            const {
+              data: savedFolderDataForMove,
+              error: savedFolderDataForMoveError,
+            } = await supabase
+              .from("folders")
+              .select("id, name, parent_folder_id, user_id")
+              .in("id", savedFolderIdsForMove);
+
+            if (cancelled) return;
+            if (savedFolderDataForMoveError) throw savedFolderDataForMoveError;
+
+            savedFoldersForMove = savedFolderDataForMove ?? [];
+          }
+        }
+
+        const mergedFoldersForMove = [
+          ...(ownFoldersForMove ?? []),
+          ...savedFoldersForMove,
+        ];
+        const foldersForMove = Array.from(
+          new Map(
+            mergedFoldersForMove.map((f) => [f.id, f]),
+          ).values(),
+        );
 
         // トップ階層なら parent_folder_id / folder_id が null のものだけ．
         let foldersQuery = supabase
@@ -675,12 +730,21 @@ export default function MapList() {
       return;
     }
 
-    // 削除したフォルダの親へ戻る。
-    // 親がない場合はホームへ戻る。
-    if (folder.parent_folder_id) {
-      navigate(`/folders/${folder.parent_folder_id}`);
-    } else {
-      navigate("/");
+    // 手元の一覧からも即座に取り除く．
+    // 削除したのが「今いる階層の子フォルダ」の場合，下の navigate は
+    // すでにいるURLと同じ場所を指すため何も起きず（＝一覧が再取得されず），
+    // これをしないと削除したはずのカードが画面に残り続けてしまう．
+    setChildFolders((current) =>
+      current.filter((f) => f.id !== folder.id),
+    );
+
+    // 削除したフォルダ自身を表示していた場合は，親へ戻る（親がなければホーム）。
+    if (folder.id === folderId) {
+      if (folder.parent_folder_id) {
+        navigate(`/folders/${folder.parent_folder_id}`);
+      } else {
+        navigate("/");
+      }
     }
   }
 

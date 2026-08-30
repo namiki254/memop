@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import Loading from "../components/Loading";
@@ -8,6 +8,7 @@ import { PinPanel } from "../components/PinPanel";
 import { PIN_TYPES, getPinEmoji } from "../lib/pinTypes";
 import { normalizeSearchText } from "../lib/searchText";
 import SaveToMyListButton from "../components/SaveToMyListButton";
+import { getGithubUsername } from "../lib/displayName";
 import ThreeDotMenu, {
   MenuItem,
 } from "../components/ThreeDotMenu";
@@ -77,6 +78,15 @@ export default function MapDetail() {
   const canEditMap =
     isMapOwner || (isUnownedMap && Boolean(currentUser));
 
+  // マップのRealtime購読（[id]にしか依存させていない）から
+  // 常に最新の currentUser / isEditingMap を読めるようにするためのref．
+  const currentUserRef = useRef(currentUser);
+  useEffect(() => {
+    currentUserRef.current = currentUser;
+  }, [currentUser]);
+
+  const isEditingMapRef = useRef(false);
+
   function handlePinListClick(pin) {
     setPinError("");
     setIsEditingPin(false);
@@ -94,6 +104,9 @@ export default function MapDetail() {
 
   // マップ自体（タイトル・説明）の編集
   const [isEditingMap, setIsEditingMap] = useState(false);
+  useEffect(() => {
+    isEditingMapRef.current = isEditingMap;
+  }, [isEditingMap]);
   const [mapTitle, setMapTitle] = useState("");
   const [mapDescription, setMapDescription] = useState("");
   const [mapIsPublic, setMapIsPublic] = useState(true); // 追加
@@ -154,6 +167,12 @@ export default function MapDetail() {
 
   //ピンを動かせるように
   const [isEditingPin, setIsEditingPin] = useState(false);
+  // Realtime購読のコールバック（[id]にしか依存させていない）から
+  // 常に最新の isEditingPin を読めるようにするためのref．
+  const isEditingPinRef = useRef(isEditingPin);
+  useEffect(() => {
+    isEditingPinRef.current = isEditingPin;
+  }, [isEditingPin]);
   function handleMovePin(x, y) {
     if (!isEditingPin) return;
 
@@ -261,6 +280,12 @@ export default function MapDetail() {
     setSearchQuery("");
     setIsEditingMap(false);
     setMapError("");
+    // 表示フィルタは前のマップの設定を持ち越さない．
+    // 持ち越すと，「すべてオフ」等にした状態で別マップを開いたときに
+    // ピンが1つも表示されず，原因も分からないまま操作不能に見えてしまう．
+    setDefaultTypeVisible(true);
+    setTypeVisibility({});
+    setShowOnlyMyPins(false);
 
     try {
       // 1. mapsテーブルから、URLのIDに一致するマップを取得
@@ -380,16 +405,30 @@ export default function MapDetail() {
   // ボタンの移動先ピッカーに使う，全マップの一覧．最初に1回だけ取る．
   useEffect(() => {
     async function loadMapOptions() {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      // フォルダ名は，自分の・持ち主なし・保存済みのものだけに絞る．
+      // 全ユーザーの全フォルダを無条件に取得すると，移動先マップのパンくず
+      // ラベル（「ホーム / フォルダ名 / マップ名」）に，自分が一度も見たことの
+      // ない他人のフォルダ名まで出てしまうため．
+      let foldersQuery = supabase
+        .from("folders")
+        .select("id, name, parent_folder_id, user_id")
+        .order("name");
+
+      foldersQuery = user
+        ? foldersQuery.or(`user_id.eq.${user.id},user_id.is.null`)
+        : foldersQuery.is("user_id", null);
+
       const [mapsResult, foldersResult] = await Promise.all([
         supabase
           .from("maps")
           .select("id, title, folder_id, user_id")
           .order("title"),
 
-        supabase
-          .from("folders")
-          .select("id, name, parent_folder_id")
-          .order("name"),
+        foldersQuery,
       ]);
 
       if (mapsResult.error) {
@@ -408,8 +447,41 @@ export default function MapDetail() {
         return;
       }
 
+      let savedFolders = [];
+
+      if (user) {
+        const { data: savedFolderRows, error: savedFoldersError } =
+          await supabase
+            .from("saved_folders")
+            .select("folder_id")
+            .eq("user_id", user.id);
+
+        if (!savedFoldersError) {
+          const savedFolderIds = (savedFolderRows ?? []).map(
+            (row) => row.folder_id,
+          );
+
+          if (savedFolderIds.length > 0) {
+            const { data: savedFolderData, error: savedFolderDataError } =
+              await supabase
+                .from("folders")
+                .select("id, name, parent_folder_id, user_id")
+                .in("id", savedFolderIds);
+
+            if (!savedFolderDataError) {
+              savedFolders = savedFolderData ?? [];
+            }
+          }
+        }
+      }
+
+      const mergedFolders = [...(foldersResult.data ?? []), ...savedFolders];
+      const uniqueFolders = Array.from(
+        new Map(mergedFolders.map((f) => [f.id, f])).values(),
+      );
+
       setAllMaps(mapsResult.data ?? []);
-      setMapOptionFolders(foldersResult.data ?? []);
+      setMapOptionFolders(uniqueFolders);
     }
 
     loadMapOptions();
@@ -438,6 +510,11 @@ export default function MapDetail() {
       if (!newUser) {
         setSelectedPin(null);
         setIsEditingPin(false);
+
+        // 「自分のピンのみ表示」はログイン中の自分を基準にした絞り込みなので，
+        // ログアウト後もオンのままだと全ピンが消え，オフにする手段（チェックボックス）も
+        // ログイン中しか出ないため，復旧できなくなってしまう．
+        setShowOnlyMyPins(false);
 
         // 非公開マップを閲覧中だった場合、画面を非表示にする
         setMap((currentMap) => {
@@ -482,6 +559,15 @@ export default function MapDetail() {
             setPins((current) =>
               current.map((p) => (p.id === payload.new.id ? payload.new : p)),
             );
+            // 今パネルで表示中のピンが他の人に書き換えられた場合，古い内容を
+            // 表示し続けない．ただし自分が編集中のときは，入力途中の内容を
+            // 消してしまわないよう上書きしない（保存時にどちらが勝つかは
+            // 別問題として残るが，少なくとも見ている内容は最新化する）．
+            setSelectedPin((current) =>
+              current?.id === payload.new.id && !isEditingPinRef.current
+                ? payload.new
+                : current,
+            );
           } else if (payload.eventType === "DELETE") {
             setPins((current) => current.filter((p) => p.id !== payload.old.id));
             // 今開いている・編集中のピンが他の人に消された場合，
@@ -496,6 +582,51 @@ export default function MapDetail() {
 
     // ページを離れる・別のマップに移るときは，必ず接続を切る．
     // 切らないと，開くたびに接続が増え続ける．
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [id]);
+
+  // 開いているマップ自体の変更（公開/非公開の切替・タイトル編集・削除）を
+  // リロードなしで反映する．これが無いと，閲覧中に所有者が「非公開」へ
+  // 切り替えても，すでに開いている人の画面にはいつまでも表示され続けてしまう．
+  useEffect(() => {
+    const channel = supabase
+      .channel(`map-${id}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "maps", filter: `id=eq.${id}` },
+        (payload) => {
+          if (payload.eventType === "DELETE") {
+            setMap(null);
+            return;
+          }
+
+          if (payload.eventType === "UPDATE") {
+            const updatedMap = payload.new;
+            const viewerId = currentUserRef.current?.id;
+            // 非公開になった後も見え続けてよいのは，作成者本人だけ．
+            const canStillView =
+              updatedMap.is_public || viewerId === updatedMap.user_id;
+
+            if (!canStillView) {
+              setMap(null);
+              return;
+            }
+
+            setMap(updatedMap);
+
+            // 自分がタイトル・説明を編集中なら，入力中の内容を消さない．
+            if (!isEditingMapRef.current) {
+              setMapTitle(updatedMap.title);
+              setMapDescription(updatedMap.description ?? "");
+              setMapIsPublic(updatedMap.is_public ?? true);
+            }
+          }
+        },
+      )
+      .subscribe();
+
     return () => {
       supabase.removeChannel(channel);
     };
@@ -558,11 +689,10 @@ export default function MapDetail() {
       return;
     }
 
-    window.open(
-      `/maps/${linkMapId}`,
-      "_blank",
-      "noopener,noreferrer",
-    );
+    // window.open は非同期処理（Supabase問い合わせ）の後に呼ぶと，
+    // ユーザー操作起因のポップアップと認識されずブラウザにブロックされる
+    // ことがある（特にSafari）．同じタブ内でのSPA遷移にしておけばその心配がない．
+    navigate(`/maps/${linkMapId}`);
   }
 
   function closePanel() {
@@ -716,6 +846,10 @@ export default function MapDetail() {
           kind,
           link_map_id: kind === "button" ? linkMapId : null,
           user_id: user.id,
+          // GitHubでログインしていない（メールのみの）場合は null のままにする．
+          // メールアドレスにフォールバックすると，他の閲覧者全員に生のメール
+          // アドレスが見えてしまうため．
+          creator_username: getGithubUsername(user),
         })
         .select()
         .single();
