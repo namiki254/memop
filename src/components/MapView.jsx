@@ -229,11 +229,8 @@ export function MapView({ map, pins = [], pendingPin = null, onPinClick, onMapCl
       onContextMenu={(event) => event.preventDefault()}
       className="relative h-full w-full min-w-0 max-w-full overflow-auto p-4"
     >
-      {/* ズームボタン（右下に固定表示）．
-          ピン詳細パネルは z-40 で画面下に固定表示されるため，
-          それより手前に出るよう z-50 にしておく（そうしないとパネルの
-          下に隠れてズーム操作が一切できなくなる）． */}
-      <div className="pointer-events-none fixed right-4 bottom-4 z-50 w-fit">
+      {/* ズームボタン（左上に絶対配置＆クリック透過制御） */}
+      <div className="pointer-events-none fixed right-4 bottom-4 z-20 w-fit">
         <div className="pointer-events-auto flex gap-1 rounded-full border border-[#F2DADD] bg-white/95 p-1 shadow-lg backdrop-blur-sm">
           <button
             type="button"

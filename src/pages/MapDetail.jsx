@@ -78,15 +78,6 @@ export default function MapDetail() {
   const canEditMap =
     isMapOwner || (isUnownedMap && Boolean(currentUser));
 
-  // マップのRealtime購読（[id]にしか依存させていない）から
-  // 常に最新の currentUser / isEditingMap を読めるようにするためのref．
-  const currentUserRef = useRef(currentUser);
-  useEffect(() => {
-    currentUserRef.current = currentUser;
-  }, [currentUser]);
-
-  const isEditingMapRef = useRef(false);
-
   function handlePinListClick(pin) {
     setPinError("");
     setIsEditingPin(false);
@@ -104,9 +95,6 @@ export default function MapDetail() {
 
   // マップ自体（タイトル・説明）の編集
   const [isEditingMap, setIsEditingMap] = useState(false);
-  useEffect(() => {
-    isEditingMapRef.current = isEditingMap;
-  }, [isEditingMap]);
   const [mapTitle, setMapTitle] = useState("");
   const [mapDescription, setMapDescription] = useState("");
   const [mapIsPublic, setMapIsPublic] = useState(true); // 追加
@@ -582,51 +570,6 @@ export default function MapDetail() {
 
     // ページを離れる・別のマップに移るときは，必ず接続を切る．
     // 切らないと，開くたびに接続が増え続ける．
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [id]);
-
-  // 開いているマップ自体の変更（公開/非公開の切替・タイトル編集・削除）を
-  // リロードなしで反映する．これが無いと，閲覧中に所有者が「非公開」へ
-  // 切り替えても，すでに開いている人の画面にはいつまでも表示され続けてしまう．
-  useEffect(() => {
-    const channel = supabase
-      .channel(`map-${id}`)
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "maps", filter: `id=eq.${id}` },
-        (payload) => {
-          if (payload.eventType === "DELETE") {
-            setMap(null);
-            return;
-          }
-
-          if (payload.eventType === "UPDATE") {
-            const updatedMap = payload.new;
-            const viewerId = currentUserRef.current?.id;
-            // 非公開になった後も見え続けてよいのは，作成者本人だけ．
-            const canStillView =
-              updatedMap.is_public || viewerId === updatedMap.user_id;
-
-            if (!canStillView) {
-              setMap(null);
-              return;
-            }
-
-            setMap(updatedMap);
-
-            // 自分がタイトル・説明を編集中なら，入力中の内容を消さない．
-            if (!isEditingMapRef.current) {
-              setMapTitle(updatedMap.title);
-              setMapDescription(updatedMap.description ?? "");
-              setMapIsPublic(updatedMap.is_public ?? true);
-            }
-          }
-        },
-      )
-      .subscribe();
-
     return () => {
       supabase.removeChannel(channel);
     };
