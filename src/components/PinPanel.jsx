@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { PIN_TYPES, getPinEmoji } from "../lib/pinTypes";
 import { renderTextWithLinks } from "../lib/linkify";
+import { supabase } from "../lib/supabase";
+import { getGithubUsername } from "../lib/displayName";
 
 /**
  * ピンの入力・表示パネル．
@@ -68,6 +70,13 @@ export function PinPanel({
   const [kind, setKind] = useState("pin");
   const [linkMapId, setLinkMapId] = useState("");
   const [showOnlyMyMaps, setShowOnlyMyMaps] = useState(false);
+
+  // コメント機能用のState
+  const [comments, setComments] = useState([]);
+  const [newComment, setNewComment] = useState("");
+  const [loadingComments, setLoadingComments] = useState(false);
+  const [submittingComment, setSubmittingComment] = useState(false);
+  const [commentError, setCommentError] = useState("");
 
   const visibleMapOptions = showOnlyMyMaps
     ? mapOptions.filter(
@@ -144,6 +153,118 @@ export function PinPanel({
       pin_type: previewPinType,
     });
   }, [isNew, isEditing, kind, pinType, customPinType, onPreviewChange]);
+
+  // コメントの取得とRealtime購読のセットアップ
+  useEffect(() => {
+    if (!pin?.id) {
+      setComments([]);
+      return;
+    }
+
+    let ignore = false;
+
+    async function loadComments() {
+      setLoadingComments(true);
+      setCommentError("");
+      const { data, error: fetchErr } = await supabase
+        .from("pin_comments")
+        .select("*")
+        .eq("pin_id", pin.id)
+        .order("created_at", { ascending: true });
+
+      if (!ignore) {
+        if (fetchErr) {
+          console.error("コメントの取得に失敗", fetchErr);
+          setCommentError("コメントの読み込みに失敗しました．");
+        } else {
+          setComments(data ?? []);
+        }
+        setLoadingComments(false);
+      }
+    }
+
+    loadComments();
+
+    // 他の人が投稿・削除したコメントを即座に反映する（Realtime）
+    const channel = supabase
+      .channel(`pin-comments-${pin.id}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "pin_comments",
+          filter: `pin_id=eq.${pin.id}`,
+        },
+        (payload) => {
+          if (payload.eventType === "INSERT") {
+            setComments((prev) =>
+              prev.some((c) => c.id === payload.new.id)
+                ? prev
+                : [...prev, payload.new]
+            );
+          } else if (payload.eventType === "DELETE") {
+            setComments((prev) => prev.filter((c) => c.id !== payload.old.id));
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      ignore = true;
+      supabase.removeChannel(channel);
+    };
+  }, [pin?.id]);
+
+  // コメントを追加する
+  async function handleAddComment(e) {
+    e.preventDefault();
+    if (!newComment.trim() || submittingComment || !currentUser || !pin?.id) {
+      return;
+    }
+
+    setSubmittingComment(true);
+    setCommentError("");
+
+    try {
+      const { error: insertErr } = await supabase
+        .from("pin_comments")
+        .insert({
+          pin_id: pin.id,
+          user_id: currentUser.id,
+          content: newComment.trim(),
+          creator_username: getGithubUsername(currentUser),
+        });
+
+      if (insertErr) {
+        console.error("コメントの送信に失敗", insertErr);
+        setCommentError("コメントの送信に失敗しました．");
+      } else {
+        setNewComment("");
+      }
+    } catch (err) {
+      console.error(err);
+      setCommentError("予期せぬエラーが発生しました．");
+    } finally {
+      setSubmittingComment(false);
+    }
+  }
+
+  // 自分のコメントを削除する（編集不可、削除のみ可）
+  async function handleDeleteComment(commentId) {
+    if (!window.confirm("このコメントを削除しますか？")) return;
+
+    setCommentError("");
+    const { error: deleteErr } = await supabase
+      .from("pin_comments")
+      .delete()
+      .eq("id", commentId);
+
+    if (deleteErr) {
+      console.error("コメントの削除に失敗", deleteErr);
+      setCommentError("コメントの削除に失敗しました．");
+    }
+  }
 
   // 新規作成（onSave）と更新（onUpdate）を切り替える
   function handleSubmit(event) {
@@ -564,6 +685,102 @@ export function PinPanel({
                 </button>
               </div>
             )}
+
+            {/* コメント表示エリア */}
+            <div className="mt-5 border-t border-rose-100 pt-4">
+              <h4 className="text-xs font-bold text-slate-600">
+                💬 コメント ({comments.length})
+              </h4>
+
+              {commentError && (
+                <p className="mt-2 rounded bg-red-50 p-1.5 text-xs text-red-600">
+                  {commentError}
+                </p>
+              )}
+
+              {/* コメント一覧表示 */}
+              <div className="mt-2 max-h-40 overflow-y-auto space-y-2 pr-1">
+                {loadingComments ? (
+                  <p className="text-xs text-slate-400">読み込み中...</p>
+                ) : comments.length === 0 ? (
+                  <p className="text-xs text-slate-400">
+                    コメントはまだありません
+                  </p>
+                ) : (
+                  comments.map((comment) => {
+                    const isMyComment = currentUser?.id === comment.user_id;
+
+                    return (
+                      <div
+                        key={comment.id}
+                        className="flex items-start justify-between gap-2 rounded-xl bg-rose-50/50 p-2 text-xs"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-1.5 text-[10px] text-slate-400">
+                            <span className="font-semibold text-slate-600 truncate">
+                              {comment.creator_username
+                                ? `@${comment.creator_username.replace(/^@/, "")}`
+                                : "名無し"}
+                            </span>
+                            <span>•</span>
+                            <span>
+                              {new Date(comment.created_at).toLocaleTimeString(
+                                [],
+                                { hour: "2-digit", minute: "2-digit" }
+                              )}
+                            </span>
+                          </div>
+                          <p className="mt-0.5 whitespace-pre-wrap break-words text-slate-700">
+                            {comment.content}
+                          </p>
+                        </div>
+
+                        {/* 編集は不可とし、自分のコメントのみ削除ボタンを表示 */}
+                        {isMyComment && (
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteComment(comment.id)}
+                            className="shrink-0 text-[10px] text-slate-400 hover:text-red-500"
+                            title="コメントを削除"
+                          >
+                            ✕
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+
+              {/* コメント入力フォーム */}
+              {currentUser ? (
+                <form
+                  onSubmit={handleAddComment}
+                  className="mt-3 flex gap-2"
+                >
+                  <input
+                    type="text"
+                    placeholder="コメントを入力..."
+                    value={newComment}
+                    onChange={(e) => setNewComment(e.target.value)}
+                    disabled={submittingComment}
+                    maxLength={200}
+                    className="flex-1 rounded-xl border border-rose-100 bg-rose-50/30 px-3 py-1.5 text-xs outline-none focus:border-rose-300 focus:ring-2 focus:ring-rose-100 disabled:bg-stone-100"
+                  />
+                  <button
+                    type="submit"
+                    disabled={submittingComment || !newComment.trim()}
+                    className="shrink-0 rounded-full bg-[#F47281] px-3 py-1.5 text-xs font-bold text-white hover:bg-[#E95F70] disabled:bg-stone-300"
+                  >
+                    送信
+                  </button>
+                </form>
+              ) : (
+                <p className="mt-2 text-xs italic text-slate-400">
+                  コメントを投稿するにはログインが必要です
+                </p>
+              )}
+            </div>
           </div>
         )}
       </div>
