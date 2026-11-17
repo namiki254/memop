@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import ErrorMessage from "../components/ErrorMessage.jsx";
 import Loading from "../components/Loading.jsx";
 import { supabase } from "../lib/supabase.js";
+import { ADMIN_COMMENT_DELETE_SETUP_MESSAGE, deleteCommentAsAdmin } from "../lib/pinComments.js";
 
 const PAGE_SIZE = 50;
 const pageButton = "rounded-md border border-rose-200 px-3 py-2 text-sm text-rose-700 disabled:opacity-40";
@@ -11,6 +12,9 @@ const commentDate = new Intl.DateTimeFormat("ja-JP", { dateStyle: "medium", time
 export default function AdminComments({ isAdmin, roleChecked, refreshRole }) {
   const [page, setPage] = useState(0);
   const [result, setResult] = useState(null);
+  const [listVersion, setListVersion] = useState(0);
+  const [deletingCommentId, setDeletingCommentId] = useState(null);
+  const [deleteFeedback, setDeleteFeedback] = useState(null);
 
   useEffect(() => {
     // URLを直接開いても、管理者だと確認するまでは一覧を要求しない。
@@ -27,24 +31,60 @@ export default function AdminComments({ isAdmin, roleChecked, refreshRole }) {
       if (controller.signal.aborted) return;
       // 一覧を開いている間に管理者権限が解除された場合、管理メニューも更新する。
       if (error?.code === "42501") refreshRole();
-      setResult({ page, data, error });
+      // 最終ページの最後のコメントを削除したら、前のページを読み込む。
+      if (!error && data?.length === 0 && page > 0) {
+        setPage(page - 1);
+        return;
+      }
+      setResult({ page, listVersion, data, error });
     }
 
     loadComments();
     return () => controller.abort();
-  }, [isAdmin, page, refreshRole]);
+  }, [isAdmin, page, listVersion, refreshRole]);
+
+  async function deleteComment(comment) {
+    if (!isAdmin || deletingCommentId !== null) return;
+    const pinTitle = comment.pin_title || "無題のピン";
+    if (!window.confirm(`「${pinTitle}」のこのコメントを削除しますか？`)) return;
+
+    setDeletingCommentId(comment.comment_id);
+    setDeleteFeedback(null);
+    // 管理者かどうかは Supabase でも確認する。画面から渡すのは削除対象のIDだけ。
+    const { data: deleted, error } = await deleteCommentAsAdmin(comment.comment_id);
+
+    if (error?.code === "PGRST202") {
+      setDeleteFeedback({ error: ADMIN_COMMENT_DELETE_SETUP_MESSAGE });
+    } else if (error) {
+      if (error.code === "42501") refreshRole();
+      setDeleteFeedback({ error: "コメントの削除結果を確認できませんでした。最新の一覧を確認してください。" });
+    } else {
+      setDeleteFeedback({ message: deleted ? "コメントを削除しました。" : "このコメントはすでに削除されています。" });
+    }
+
+    // 通信が途中で切れても、再取得した一覧で実際の削除結果を確認できるようにする。
+    setListVersion((version) => version + 1);
+    setDeletingCommentId(null);
+  }
 
   if (!roleChecked) return <Loading />;
   if (!isAdmin) return <ErrorMessage message="管理者権限が必要です。" />;
 
-  const pageReady = result?.page === page;
+  const pageReady = result?.page === page && result.listVersion === listVersion;
   const comments = pageReady ? result.data?.slice(0, PAGE_SIZE) ?? [] : [];
   const hasNextPage = pageReady && result.data?.length > PAGE_SIZE;
+  const deleting = deletingCommentId !== null;
 
   return (
     <section className="h-full overflow-y-auto bg-rose-50">
       <div className="mx-auto max-w-3xl px-4 py-6 sm:px-6">
         <h1 className="mb-4 text-xl font-bold text-slate-800">コメント管理</h1>
+        {deleteFeedback?.error && <ErrorMessage message={deleteFeedback.error} />}
+        {deleteFeedback?.message && (
+          <p role="status" className="mb-4 rounded-md bg-white px-4 py-3 text-sm text-slate-700">
+            {deleteFeedback.message}
+          </p>
+        )}
         {!pageReady ? (
           <Loading />
         ) : result.error?.code === "PGRST202" ? (
@@ -78,6 +118,15 @@ export default function AdminComments({ isAdmin, roleChecked, refreshRole }) {
                       {comment.map_title || "無題のマップ"} / {comment.pin_title || "無題のピン"}
                     </Link>
                     <span className="text-xs text-slate-600">{comment.is_public ? "公開" : "非公開"}</span>
+                    <button
+                      type="button"
+                      className={`ml-auto ${pageButton}`}
+                      disabled={deleting}
+                      aria-label={`${comment.pin_title || "ピン"}のコメントを削除`}
+                      onClick={() => deleteComment(comment)}
+                    >
+                      {deletingCommentId === comment.comment_id ? "削除中…" : "削除"}
+                    </button>
                   </div>
                 </li>
               );
@@ -86,11 +135,11 @@ export default function AdminComments({ isAdmin, roleChecked, refreshRole }) {
         )}
         {(page > 0 || hasNextPage) && (
           <nav aria-label="コメント一覧のページ" className="mt-4 flex items-center gap-3">
-            <button type="button" className={pageButton} disabled={page === 0} onClick={() => setPage(page - 1)}>
+            <button type="button" className={pageButton} disabled={!pageReady || page === 0 || deleting} onClick={() => setPage(page - 1)}>
               前へ
             </button>
             <span className="text-sm text-slate-600">{page + 1} ページ</span>
-            <button type="button" className={pageButton} disabled={!hasNextPage} onClick={() => setPage(page + 1)}>
+            <button type="button" className={pageButton} disabled={!hasNextPage || deleting} onClick={() => setPage(page + 1)}>
               次へ
             </button>
           </nav>

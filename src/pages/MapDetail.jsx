@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import { canManageContent } from "../lib/mapAccess";
 import Loading from "../components/Loading";
@@ -29,7 +29,8 @@ export default function MapDetail({ currentUser, isAdmin }) {
   // /maps/:id の :id を取得する
   const { id } = useParams();
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
+  const location = useLocation();
+  const [searchParams, setSearchParams] = useSearchParams();
   const requestedPinId = searchParams.get("pin");
   const requestedCommentId = searchParams.get("comment");
   // Supabaseから取得したデータを保存する
@@ -595,6 +596,17 @@ export default function MapDetail({ currentUser, isAdmin }) {
     setSelectedPin(null);
     setIsEditingPin(false);
     setPinError("");
+  }
+
+  function clearDeletedCommentLink(commentId) {
+    if (String(commentId) !== requestedCommentId) return;
+    // 削除中に別のページに移った場合は、そのページのURLを書き換えない。
+    if (window.location.pathname !== location.pathname || window.location.search !== location.search) return;
+
+    // 対象コメントへの指定だけを外し、ピンは開いたままにする。
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.delete("comment");
+    setSearchParams(nextParams, { replace: true });
   }
 
   // コピー処理を追加
@@ -1325,7 +1337,9 @@ export default function MapDetail({ currentUser, isAdmin }) {
           <PinPanel
             pin={selectedPin}
             focusedCommentId={String(selectedPin.id) === requestedPinId ? requestedCommentId : null}
+            onFocusedCommentDeleted={clearDeletedCommentLink}
             currentUser={currentUser}
+            isAdmin={isAdmin}
             canManagePin={canManageContent(selectedPin, currentUser?.id, isAdmin)}
             saving={savingPin}
             error={pinError}

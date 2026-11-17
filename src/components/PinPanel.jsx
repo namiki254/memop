@@ -3,6 +3,8 @@ import { PIN_TYPES, getPinEmoji } from "../lib/pinTypes";
 import { renderTextWithLinks } from "../lib/linkify";
 import { supabase } from "../lib/supabase";
 import { getGithubUsername } from "../lib/displayName";
+import { canManageContent } from "../lib/mapAccess";
+import { ADMIN_COMMENT_DELETE_SETUP_MESSAGE, deleteCommentAsAdmin } from "../lib/pinComments";
 
 /**
  * ピンの入力・表示パネル．
@@ -40,7 +42,9 @@ function truncateToGraphemes(value, maxLength) {
 export function PinPanel({
   pin,
   focusedCommentId = null,
+  onFocusedCommentDeleted,
   currentUser,
+  isAdmin = false,
   canManagePin,
   saving = false,
   error = "",
@@ -70,6 +74,7 @@ export function PinPanel({
   const [newComment, setNewComment] = useState("");
   const [loadingComments, setLoadingComments] = useState(true);
   const [submittingComment, setSubmittingComment] = useState(false);
+  const [deletingCommentId, setDeletingCommentId] = useState(null);
   const [commentError, setCommentError] = useState("");
   const focusedCommentRef = useRef(null);
   const hasFocusedComment = focusedCommentId !== null
@@ -270,20 +275,30 @@ export function PinPanel({
     }
   }
 
-  // 自分のコメントを削除する（編集不可、削除のみ可）
-  async function handleDeleteComment(commentId) {
+  async function handleDeleteComment(comment) {
+    if (deletingCommentId !== null || !canManageContent(comment, currentUser?.id, isAdmin)) return;
     if (!window.confirm("このコメントを削除しますか？")) return;
 
+    setDeletingCommentId(comment.id);
     setCommentError("");
-    const { error: deleteErr } = await supabase
-      .from("pin_comments")
-      .delete()
-      .eq("id", commentId);
+    // 自分の投稿には既存の削除ルールを使い、他の人の投稿は管理者用の関数で削除する。
+    const isOwnComment = comment.user_id === currentUser.id;
+    const { data, error: deleteErr } = isOwnComment
+      ? await supabase.from("pin_comments").delete()
+        .eq("id", comment.id).eq("user_id", currentUser.id).select("id").maybeSingle()
+      : await deleteCommentAsAdmin(comment.id);
 
-    if (deleteErr) {
+    if (deleteErr?.code === "PGRST202" && !isOwnComment) {
+      setCommentError(ADMIN_COMMENT_DELETE_SETUP_MESSAGE);
+    } else if (deleteErr || (isOwnComment && !data)) {
       console.error("コメントの削除に失敗", deleteErr);
-      setCommentError("コメントの削除に失敗しました．");
+      setCommentError("コメントを削除できませんでした。再読み込みして最新のコメントを確認してください。");
+    } else {
+      // 変更通知を待たず、削除結果を開いているピンの一覧に反映する。
+      setComments((previous) => previous.filter((item) => item.id !== comment.id));
+      if (String(comment.id) === focusedCommentId) onFocusedCommentDeleted?.(comment.id);
     }
+    setDeletingCommentId(null);
   }
 
   // 新規作成（onSave）と更新（onUpdate）を切り替える
@@ -720,7 +735,8 @@ export function PinPanel({
 
               {focusedCommentId && !loadingComments && !hasFocusedComment && !commentError && (
                 <p role="status" className="mt-2 text-xs text-slate-600">
-                  リンク先のコメントは見つかりませんでした。
+                  このリンクで指定されたコメントは表示できません。
+                  {comments.length > 0 && " 下には、このピンの他のコメントを表示しています。"}
                 </p>
               )}
 
@@ -734,7 +750,7 @@ export function PinPanel({
                   </p>
                 ) : (
                   comments.map((comment) => {
-                    const isMyComment = currentUser?.id === comment.user_id;
+                    const canDeleteComment = canManageContent(comment, currentUser?.id, isAdmin);
                     const isFocused = String(comment.id) === focusedCommentId;
 
                     return (
@@ -764,15 +780,16 @@ export function PinPanel({
                           </p>
                         </div>
 
-                        {/* 編集は不可とし、自分のコメントのみ削除ボタンを表示 */}
-                        {isMyComment && (
+                        {canDeleteComment && (
                           <button
                             type="button"
-                            onClick={() => handleDeleteComment(comment.id)}
-                            className="shrink-0 text-[10px] text-slate-400 hover:text-red-500"
+                            onClick={() => handleDeleteComment(comment)}
+                            disabled={deletingCommentId !== null}
+                            className="shrink-0 text-[10px] text-slate-400 hover:text-red-500 disabled:opacity-40"
+                            aria-label="コメントを削除"
                             title="コメントを削除"
                           >
-                            ✕
+                            ×
                           </button>
                         )}
                       </div>
