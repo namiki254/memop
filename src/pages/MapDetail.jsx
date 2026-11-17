@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import { canManageContent } from "../lib/mapAccess";
 import Loading from "../components/Loading";
@@ -29,6 +29,9 @@ export default function MapDetail({ currentUser, isAdmin }) {
   // /maps/:id の :id を取得する
   const { id } = useParams();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const requestedPinId = searchParams.get("pin");
+  const requestedCommentId = searchParams.get("comment");
   // Supabaseから取得したデータを保存する
   const [map, setMap] = useState(null);
   // マップが入っているフォルダの階層を保存する
@@ -42,6 +45,7 @@ export default function MapDetail({ currentUser, isAdmin }) {
   // 既存のピンを見ているときは pins の1件，新しく作るときは { x, y } だけの仮の値．
   // null のときはパネルを出さない．
   const [selectedPin, setSelectedPin] = useState(null);
+  const requestedPinMissing = requestedPinId && !pins.some((pin) => String(pin.id) === requestedPinId);
 
   const [pendingPinAppearance, setPendingPinAppearance] = useState({
     kind: "pin",
@@ -319,18 +323,36 @@ export default function MapDetail({ currentUser, isAdmin }) {
         throw pinError;
       }
 
+      const mapPins = pinData ?? [];
+      if (requestedPinId) {
+        // 一覧の取得件数に上限があっても、リンク先のピンを同じマップ内で探す。
+        let linkedPin = mapPins.find((pin) => String(pin.id) === requestedPinId);
+        if (!linkedPin) {
+          const { data, error: linkedPinError } = await supabase
+            .from("pins")
+            .select("*")
+            .eq("map_id", id)
+            .eq("id", requestedPinId)
+            .maybeSingle();
+          if (linkedPinError && linkedPinError.code !== "22P02") throw linkedPinError;
+          linkedPin = data;
+          if (linkedPin) mapPins.push(linkedPin);
+        }
+        setSelectedPin(linkedPin ?? null);
+      }
+
       // 3. 取得したデータをstateへ保存
       setMap(mapData);
       setMapTitle(mapData.title);
       setMapDescription(mapData.description ?? "");
       setMapIsPublic(mapData.is_public ?? true); // 追加
-      setPins(pinData ?? []);
+      setPins(mapPins);
     } catch (fetchError) {
       setError(fetchError);
     } finally {
       setLoading(false);
     }
-  }, [id]);
+  }, [id, requestedPinId]);
 
   useEffect(() => {
     loadMapDetail();
@@ -1302,6 +1324,7 @@ export default function MapDetail({ currentUser, isAdmin }) {
         {selectedPin && (
           <PinPanel
             pin={selectedPin}
+            focusedCommentId={String(selectedPin.id) === requestedPinId ? requestedCommentId : null}
             currentUser={currentUser}
             canManagePin={canManageContent(selectedPin, currentUser?.id, isAdmin)}
             saving={savingPin}
@@ -1317,6 +1340,11 @@ export default function MapDetail({ currentUser, isAdmin }) {
             onEditStart={startEditingPin}
             onEditCancel={cancelEditingPin}
           />
+        )}
+        {requestedPinMissing && (
+          <p role="status" className="absolute inset-x-4 bottom-4 z-10 rounded-md bg-white p-3 text-sm text-slate-700 shadow">
+            リンク先のピンを開けませんでした。
+          </p>
         )}
       </div>
       {/* 同じフォルダの閲覧可能なマップへの切り替え */}

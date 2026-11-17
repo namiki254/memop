@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { PIN_TYPES, getPinEmoji } from "../lib/pinTypes";
 import { renderTextWithLinks } from "../lib/linkify";
 import { supabase } from "../lib/supabase";
@@ -39,6 +39,7 @@ function truncateToGraphemes(value, maxLength) {
 
 export function PinPanel({
   pin,
+  focusedCommentId = null,
   currentUser,
   canManagePin,
   saving = false,
@@ -67,9 +68,12 @@ export function PinPanel({
   // コメント機能用のState
   const [comments, setComments] = useState([]);
   const [newComment, setNewComment] = useState("");
-  const [loadingComments, setLoadingComments] = useState(false);
+  const [loadingComments, setLoadingComments] = useState(true);
   const [submittingComment, setSubmittingComment] = useState(false);
   const [commentError, setCommentError] = useState("");
+  const focusedCommentRef = useRef(null);
+  const hasFocusedComment = focusedCommentId !== null
+    && comments.some((comment) => String(comment.id) === focusedCommentId);
 
   const visibleMapOptions = showOnlyMyMaps
     ? mapOptions.filter(
@@ -165,12 +169,27 @@ export function PinPanel({
         .eq("pin_id", pin.id)
         .order("created_at", { ascending: true });
 
+      let loadedComments = data ?? [];
+      let loadError = fetchErr;
+      if (!ignore && !loadError && focusedCommentId
+        && !loadedComments.some((comment) => String(comment.id) === focusedCommentId)) {
+        // 一覧の取得上限より後にあるコメントも、リンク先のピンに絞って取得する。
+        const { data: linkedComment, error: linkedCommentError } = await supabase
+          .from("pin_comments")
+          .select("*")
+          .eq("pin_id", pin.id)
+          .eq("id", focusedCommentId)
+          .maybeSingle();
+        if (linkedComment) loadedComments = [...loadedComments, linkedComment];
+        if (linkedCommentError && linkedCommentError.code !== "22P02") loadError = linkedCommentError;
+      }
+
       if (!ignore) {
-        if (fetchErr) {
-          console.error("コメントの取得に失敗", fetchErr);
+        if (loadError) {
+          console.error("コメントの取得に失敗", loadError);
           setCommentError("コメントの読み込みに失敗しました．");
         } else {
-          setComments(data ?? []);
+          setComments(loadedComments);
         }
         setLoadingComments(false);
       }
@@ -207,7 +226,15 @@ export function PinPanel({
       ignore = true;
       supabase.removeChannel(channel);
     };
-  }, [pin?.id]);
+  }, [pin?.id, focusedCommentId]);
+
+  useEffect(() => {
+    // 投稿先を開いたとき、長いコメント一覧でも対象が見える位置に移動する。
+    if (!loadingComments && hasFocusedComment && !isEditing) {
+      focusedCommentRef.current?.scrollIntoView({ block: "nearest" });
+      focusedCommentRef.current?.focus({ preventScroll: true });
+    }
+  }, [focusedCommentId, hasFocusedComment, loadingComments, isEditing]);
 
   // コメントを追加する
   async function handleAddComment(e) {
@@ -691,6 +718,12 @@ export function PinPanel({
                 </p>
               )}
 
+              {focusedCommentId && !loadingComments && !hasFocusedComment && !commentError && (
+                <p role="status" className="mt-2 text-xs text-slate-600">
+                  リンク先のコメントは見つかりませんでした。
+                </p>
+              )}
+
               {/* コメント一覧表示 */}
               <div className="mt-2 max-h-40 overflow-y-auto space-y-2 pr-1">
                 {loadingComments ? (
@@ -702,11 +735,14 @@ export function PinPanel({
                 ) : (
                   comments.map((comment) => {
                     const isMyComment = currentUser?.id === comment.user_id;
+                    const isFocused = String(comment.id) === focusedCommentId;
 
                     return (
                       <div
                         key={comment.id}
-                        className="flex items-start justify-between gap-2 rounded-xl bg-rose-50/50 p-2 text-xs"
+                        ref={isFocused ? focusedCommentRef : null}
+                        tabIndex={isFocused ? -1 : undefined}
+                        className={`flex items-start justify-between gap-2 rounded-xl p-2 text-xs ${isFocused ? "bg-rose-100 ring-1 ring-inset ring-rose-400" : "bg-rose-50/50"}`}
                       >
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-1.5 text-[10px] text-slate-400">
