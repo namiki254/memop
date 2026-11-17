@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+import CommentEditor from "../components/CommentEditor.jsx";
 import ErrorMessage from "../components/ErrorMessage.jsx";
 import Loading from "../components/Loading.jsx";
 import { supabase } from "../lib/supabase.js";
-import { ADMIN_COMMENT_DELETE_SETUP_MESSAGE, deleteCommentAsAdmin } from "../lib/pinComments.js";
+import { ADMIN_COMMENT_DELETE_UNAVAILABLE_MESSAGE, deleteCommentAsAdmin } from "../lib/pinComments.js";
 
 const PAGE_SIZE = 50;
 const pageButton = "rounded-md border border-rose-200 px-3 py-2 text-sm text-rose-700 disabled:opacity-40";
@@ -14,7 +15,8 @@ export default function AdminComments({ isAdmin, roleChecked, refreshRole }) {
   const [result, setResult] = useState(null);
   const [listVersion, setListVersion] = useState(0);
   const [deletingCommentId, setDeletingCommentId] = useState(null);
-  const [deleteFeedback, setDeleteFeedback] = useState(null);
+  const [editingCommentId, setEditingCommentId] = useState(null);
+  const [feedback, setFeedback] = useState(null);
 
   useEffect(() => {
     // URLを直接開いても、管理者だと確認するまでは一覧を要求しない。
@@ -49,22 +51,32 @@ export default function AdminComments({ isAdmin, roleChecked, refreshRole }) {
     if (!window.confirm(`「${pinTitle}」のこのコメントを削除しますか？`)) return;
 
     setDeletingCommentId(comment.comment_id);
-    setDeleteFeedback(null);
+    setFeedback(null);
     // 管理者かどうかは Supabase でも確認する。画面から渡すのは削除対象のIDだけ。
     const { data: deleted, error } = await deleteCommentAsAdmin(comment.comment_id);
 
     if (error?.code === "PGRST202") {
-      setDeleteFeedback({ error: ADMIN_COMMENT_DELETE_SETUP_MESSAGE });
+      setFeedback({ error: ADMIN_COMMENT_DELETE_UNAVAILABLE_MESSAGE });
     } else if (error) {
       if (error.code === "42501") refreshRole();
-      setDeleteFeedback({ error: "コメントの削除結果を確認できませんでした。最新の一覧を確認してください。" });
+      setFeedback({ error: "コメントの削除結果を確認できませんでした。最新の一覧を確認してください。" });
     } else {
-      setDeleteFeedback({ message: deleted ? "コメントを削除しました。" : "このコメントはすでに削除されています。" });
+      setFeedback({ message: deleted ? "コメントを削除しました。" : "このコメントはすでに削除されています。" });
     }
 
     // 通信が途中で切れても、再取得した一覧で実際の削除結果を確認できるようにする。
     setListVersion((version) => version + 1);
     setDeletingCommentId(null);
+  }
+
+  function handleCommentSaved(commentId, content) {
+    // SQL が返した本文を使い、一覧の並び順と投稿者の表示を保つ。
+    setResult((previous) => ({
+      ...previous,
+      data: previous.data.map((comment) => comment.comment_id === commentId ? { ...comment, content } : comment),
+    }));
+    setEditingCommentId(null);
+    setFeedback({ message: "コメントを保存しました。" });
   }
 
   if (!roleChecked) return <Loading />;
@@ -73,22 +85,22 @@ export default function AdminComments({ isAdmin, roleChecked, refreshRole }) {
   const pageReady = result?.page === page && result.listVersion === listVersion;
   const comments = pageReady ? result.data?.slice(0, PAGE_SIZE) ?? [] : [];
   const hasNextPage = pageReady && result.data?.length > PAGE_SIZE;
-  const deleting = deletingCommentId !== null;
+  const commentActionsDisabled = deletingCommentId !== null || editingCommentId !== null;
 
   return (
     <section className="h-full overflow-y-auto bg-rose-50">
       <div className="mx-auto max-w-3xl px-4 py-6 sm:px-6">
         <h1 className="mb-4 text-xl font-bold text-slate-800">コメント管理</h1>
-        {deleteFeedback?.error && <ErrorMessage message={deleteFeedback.error} />}
-        {deleteFeedback?.message && (
+        {feedback?.error && <ErrorMessage message={feedback.error} />}
+        {feedback?.message && (
           <p role="status" className="mb-4 rounded-md bg-white px-4 py-3 text-sm text-slate-700">
-            {deleteFeedback.message}
+            {feedback.message}
           </p>
         )}
         {!pageReady ? (
           <Loading />
         ) : result.error?.code === "PGRST202" ? (
-          <ErrorMessage message="接続先の Supabase でコメント管理用の関数が見つかりません。docs/sql/issue-13-admin-comments.sql を SQL Editor で実行してから再読み込みしてください。" />
+          <ErrorMessage message="コメント管理は現在利用できません。運営担当者にお問い合わせください。" />
         ) : result.error ? (
           <ErrorMessage message={result.error.code
             ? `コメント一覧を取得できませんでした。（エラーコード: ${result.error.code}）`
@@ -101,15 +113,33 @@ export default function AdminComments({ isAdmin, roleChecked, refreshRole }) {
               const author = comment.creator_username?.trim().replace(/^@/, "");
               const postedAt = comment.created_at ? new Date(comment.created_at) : null;
               const target = new URLSearchParams({ pin: comment.pin_id, comment: comment.comment_id });
+              const isEditingComment = editingCommentId === comment.comment_id;
               return (
                 <li key={comment.comment_id} className="px-4 py-4">
                   <p className="mb-2 flex flex-wrap gap-x-3 gap-y-1 text-sm text-slate-600">
-                    <span className="break-all font-semibold">
-                      {author ? `@${author}` : comment.user_id || "投稿者不明"}
-                    </span>
+                    {comment.user_id ? (
+                      <Link
+                        to={`/admin/users?${new URLSearchParams({ user: comment.user_id })}`}
+                        className="break-all font-semibold text-rose-700 underline underline-offset-2"
+                        title="ユーザー管理で投稿者を開く"
+                      >
+                        {author ? `@${author}` : comment.user_id}
+                      </Link>
+                    ) : (
+                      <span className="break-all font-semibold">{author ? `@${author}` : "投稿者不明"}</span>
+                    )}
                     {postedAt && <time dateTime={comment.created_at}>{commentDate.format(postedAt)}</time>}
                   </p>
-                  <p className="whitespace-pre-wrap break-words text-sm text-slate-800">{comment.content}</p>
+                  {isEditingComment ? (
+                    <CommentEditor
+                      commentId={comment.comment_id}
+                      content={comment.content}
+                      onSave={(content) => handleCommentSaved(comment.comment_id, content)}
+                      onCancel={() => setEditingCommentId(null)}
+                    />
+                  ) : (
+                    <p className="whitespace-pre-wrap break-words text-sm text-slate-800">{comment.content}</p>
+                  )}
                   <div className="mt-3 flex flex-wrap items-baseline gap-x-2 gap-y-1 text-sm">
                     <Link
                       to={`/maps/${encodeURIComponent(comment.map_id)}?${target}`}
@@ -118,15 +148,31 @@ export default function AdminComments({ isAdmin, roleChecked, refreshRole }) {
                       {comment.map_title || "無題のマップ"} / {comment.pin_title || "無題のピン"}
                     </Link>
                     <span className="text-xs text-slate-600">{comment.is_public ? "公開" : "非公開"}</span>
-                    <button
-                      type="button"
-                      className={`ml-auto ${pageButton}`}
-                      disabled={deleting}
-                      aria-label={`${comment.pin_title || "ピン"}のコメントを削除`}
-                      onClick={() => deleteComment(comment)}
-                    >
-                      {deletingCommentId === comment.comment_id ? "削除中…" : "削除"}
-                    </button>
+                    {!isEditingComment && (
+                      <div className="ml-auto flex gap-2">
+                        <button
+                          type="button"
+                          className={pageButton}
+                          disabled={commentActionsDisabled}
+                          aria-label={`${comment.pin_title || "ピン"}のコメントを編集`}
+                          onClick={() => {
+                            setFeedback(null);
+                            setEditingCommentId(comment.comment_id);
+                          }}
+                        >
+                          編集
+                        </button>
+                        <button
+                          type="button"
+                          className={pageButton}
+                          disabled={commentActionsDisabled}
+                          aria-label={`${comment.pin_title || "ピン"}のコメントを削除`}
+                          onClick={() => deleteComment(comment)}
+                        >
+                          {deletingCommentId === comment.comment_id ? "削除中…" : "削除"}
+                        </button>
+                      </div>
+                    )}
                   </div>
                 </li>
               );
@@ -135,11 +181,11 @@ export default function AdminComments({ isAdmin, roleChecked, refreshRole }) {
         )}
         {(page > 0 || hasNextPage) && (
           <nav aria-label="コメント一覧のページ" className="mt-4 flex items-center gap-3">
-            <button type="button" className={pageButton} disabled={!pageReady || page === 0 || deleting} onClick={() => setPage(page - 1)}>
+            <button type="button" className={pageButton} disabled={!pageReady || page === 0 || commentActionsDisabled} onClick={() => setPage(page - 1)}>
               前へ
             </button>
             <span className="text-sm text-slate-600">{page + 1} ページ</span>
-            <button type="button" className={pageButton} disabled={!hasNextPage || deleting} onClick={() => setPage(page + 1)}>
+            <button type="button" className={pageButton} disabled={!hasNextPage || commentActionsDisabled} onClick={() => setPage(page + 1)}>
               次へ
             </button>
           </nav>

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { supabase } from "../lib/supabase.js";
 import ErrorMessage from "../components/ErrorMessage.jsx";
 import Loading from "../components/Loading.jsx";
@@ -6,12 +6,14 @@ import Loading from "../components/Loading.jsx";
 const PAGE_SIZE = 50;
 const buttonClass = "rounded-md border border-rose-200 px-3 py-2 text-sm font-semibold text-rose-700 hover:bg-rose-50 disabled:opacity-40";
 
-export default function AdminUsers({ currentUserId, isAdmin, roleChecked, refreshRole }) {
-  const [page, setPage] = useState(0);
+export default function AdminUsers({ currentUserId, linkedUserId, isAdmin, roleChecked, refreshRole }) {
+  // 投稿者リンクから来たときは、どのページに載っているかを Supabase に問い合わせる。
+  const [page, setPage] = useState(linkedUserId ? null : 0);
   const [listVersion, setListVersion] = useState(0);
   const [result, setResult] = useState(null);
   const [savingUserId, setSavingUserId] = useState(null);
   const [feedback, setFeedback] = useState(null);
+  const linkedUserRef = useRef(null);
 
   useEffect(() => {
     // URL を直接開いても、管理者だと確認できるまで一覧を要求しない。
@@ -20,23 +22,53 @@ export default function AdminUsers({ currentUserId, isAdmin, roleChecked, refres
 
     const controller = new AbortController();
     async function loadUsers() {
+      const linkedPage = page === null
+        ? await supabase.rpc("admin_list_users_at_user", {
+          target_user_id: linkedUserId,
+          page_size: PAGE_SIZE,
+        }).abortSignal(controller.signal)
+        : null;
+      if (controller.signal.aborted) return;
+
+      let pageNumber = page ?? 0;
+      let linkMessage = "";
+      if (linkedPage?.data?.length) {
+        const { data } = linkedPage;
+        pageNumber = data[0].page_number;
+        setResult({ page, pageNumber, listVersion, data, error: null });
+        return;
+      }
+
+      if (linkedPage?.error?.code === "42501") {
+        refreshRole();
+        setResult({ page, pageNumber, listVersion, error: linkedPage.error });
+        return;
+      }
+
+      // 対象を探せない場合も、通常のユーザー一覧を開けるようにする。
+      if (linkedPage?.error && linkedPage.error.code !== "22P02") {
+        linkMessage = "投稿者のリンクを開けませんでした。下のユーザー一覧から投稿者を探してください。";
+      } else if (linkedPage) {
+        linkMessage = "指定された投稿者がユーザー一覧に見つかりませんでした。";
+      }
+
       // 表示件数より1件多く取得し、次のページがあるかを確認する。
       const { data, error } = await supabase
         .rpc("admin_list_users", {
-          page_offset: page * PAGE_SIZE,
+          page_offset: pageNumber * PAGE_SIZE,
           page_limit: PAGE_SIZE + 1,
         })
         .abortSignal(controller.signal);
 
       if (controller.signal.aborted) return;
       if (error?.code === "42501") refreshRole();
-      setResult({ page, listVersion, data, error });
+      setResult({ page, pageNumber, listVersion, data, error, linkMessage });
     }
 
     loadUsers();
     // ページ移動やログアウトで不要になった一覧の取得を取り消す。
     return () => controller.abort();
-  }, [isAdmin, page, listVersion, refreshRole]);
+  }, [isAdmin, linkedUserId, page, listVersion, refreshRole]);
 
   function reloadUsers() {
     setListVersion((version) => version + 1);
@@ -70,18 +102,30 @@ export default function AdminUsers({ currentUserId, isAdmin, roleChecked, refres
     setSavingUserId(null);
   }
 
+  const loading = result?.page !== page || result?.listVersion !== listVersion;
+  const pageNumber = page ?? result?.pageNumber ?? 0;
+  const users = loading ? [] : result.data?.slice(0, PAGE_SIZE) ?? [];
+  const hasNextPage = !loading && result.data?.length > PAGE_SIZE;
+  const hasLinkedUser = Boolean(linkedUserId && users.some((user) => user.user_id === linkedUserId));
+  const saving = savingUserId !== null;
+
+  useEffect(() => {
+    // ページを開いたら、画面の下の方にある行でも見つけやすくする。
+    if (!hasLinkedUser) return;
+    linkedUserRef.current?.scrollIntoView({ block: "nearest" });
+    linkedUserRef.current?.focus({ preventScroll: true });
+  }, [hasLinkedUser]);
+
   if (!roleChecked) return <Loading />;
   if (!isAdmin) return <ErrorMessage message="管理者権限が必要です。" />;
-
-  const loading = result?.page !== page || result.listVersion !== listVersion;
-  const users = result?.data?.slice(0, PAGE_SIZE) ?? [];
-  const hasNextPage = (result?.data?.length ?? 0) > PAGE_SIZE;
-  const saving = savingUserId !== null;
 
   return (
     <section className="h-full overflow-y-auto bg-rose-50">
       <div className="mx-auto max-w-3xl px-4 py-6 sm:px-6">
         <h1 className="mb-4 text-xl font-bold text-slate-800">ユーザー管理</h1>
+        {!loading && result.linkMessage && (
+          <p role="status" className="mb-4 text-sm text-slate-600">{result.linkMessage}</p>
+        )}
         {feedback?.error && <ErrorMessage message={feedback.error} />}
         {feedback?.message && (
           <p role="status" className="mb-4 rounded-md bg-white px-4 py-3 text-sm text-slate-700">
@@ -101,12 +145,19 @@ export default function AdminUsers({ currentUserId, isAdmin, roleChecked, refres
           <ul className="divide-y divide-rose-100 rounded-lg border border-rose-100 bg-white">
             {users.map((user) => {
               const actionLabel = user.is_admin ? "管理者を解除" : "管理者にする";
+              const isLinkedUser = user.user_id === linkedUserId;
               return (
-                <li key={user.user_id} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
+                <li
+                  key={user.user_id}
+                  ref={isLinkedUser ? linkedUserRef : null}
+                  tabIndex={isLinkedUser ? -1 : undefined}
+                  className={`flex flex-wrap items-center justify-between gap-3 px-4 py-3 ${isLinkedUser ? "bg-rose-50 ring-2 ring-inset ring-rose-400" : ""}`}
+                >
                   <div className="w-full min-w-0 sm:w-auto sm:flex-1">
                     <p className="break-all font-medium text-slate-800">
                       {user.github_username || "GitHub ユーザー名なし"}
                       {user.user_id === currentUserId && <span className="ml-2 text-xs text-slate-500">自分</span>}
+                      {isLinkedUser && <span className="ml-2 text-xs text-rose-700">コメントの投稿者</span>}
                     </p>
                     <p className="break-all text-sm text-slate-600">{user.email || "メールアドレス未登録"}</p>
                     <p className="break-all text-xs text-slate-500">{user.user_id}</p>
@@ -126,22 +177,22 @@ export default function AdminUsers({ currentUserId, isAdmin, roleChecked, refres
             })}
           </ul>
         )}
-        {(page > 0 || hasNextPage) && (
+        {(pageNumber > 0 || hasNextPage) && (
           <nav aria-label="ユーザー一覧のページ" className="mt-4 flex items-center gap-3">
             <button
               type="button"
               className={buttonClass}
-              disabled={page === 0 || saving}
-              onClick={() => setPage((previous) => previous - 1)}
+              disabled={loading || pageNumber === 0 || saving}
+              onClick={() => setPage(pageNumber - 1)}
             >
               前へ
             </button>
-            <span className="text-sm text-slate-600">{page + 1} ページ</span>
+            <span className="text-sm text-slate-600">{pageNumber + 1} ページ</span>
             <button
               type="button"
               className={buttonClass}
               disabled={loading || !hasNextPage || saving}
-              onClick={() => setPage((previous) => previous + 1)}
+              onClick={() => setPage(pageNumber + 1)}
             >
               次へ
             </button>

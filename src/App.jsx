@@ -33,7 +33,9 @@ import NotFound from "./pages/NotFound.jsx";
 export default function App() {
   const navigate = useNavigate();
   const location = useLocation();
-  const linkedPinId = new URLSearchParams(location.search).get("pin");
+  const searchParams = new URLSearchParams(location.search);
+  const linkedPinId = searchParams.get("pin");
+  const linkedUserId = searchParams.get("user")?.toLowerCase() ?? null;
   const { currentUser, authChecked, roleChecked, isAdmin, refreshRole } = useMapAccess();
   const accessKey = JSON.stringify([currentUser?.id, isAdmin]);
   const mapList = (
@@ -154,8 +156,9 @@ export default function App() {
             path="/admin/users"
             element={
               <AdminUsers
-                key={accessKey}
+                key={JSON.stringify([accessKey, linkedUserId])}
                 currentUserId={currentUser?.id}
+                linkedUserId={linkedUserId}
                 isAdmin={isAdmin}
                 roleChecked={roleChecked}
                 refreshRole={refreshRole}

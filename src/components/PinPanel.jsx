@@ -4,7 +4,8 @@ import { renderTextWithLinks } from "../lib/linkify";
 import { supabase } from "../lib/supabase";
 import { getGithubUsername } from "../lib/displayName";
 import { canManageContent } from "../lib/mapAccess";
-import { ADMIN_COMMENT_DELETE_SETUP_MESSAGE, deleteCommentAsAdmin } from "../lib/pinComments";
+import { ADMIN_COMMENT_DELETE_UNAVAILABLE_MESSAGE, deleteCommentAsAdmin } from "../lib/pinComments";
+import CommentEditor from "./CommentEditor.jsx";
 
 /**
  * ピンの入力・表示パネル．
@@ -75,6 +76,7 @@ export function PinPanel({
   const [loadingComments, setLoadingComments] = useState(true);
   const [submittingComment, setSubmittingComment] = useState(false);
   const [deletingCommentId, setDeletingCommentId] = useState(null);
+  const [editingCommentId, setEditingCommentId] = useState(null);
   const [commentError, setCommentError] = useState("");
   const focusedCommentRef = useRef(null);
   const hasFocusedComment = focusedCommentId !== null
@@ -158,6 +160,7 @@ export function PinPanel({
 
   // コメントの取得とRealtime購読のセットアップ
   useEffect(() => {
+    setEditingCommentId(null);
     if (!pin?.id) {
       setComments([]);
       return;
@@ -202,7 +205,7 @@ export function PinPanel({
 
     loadComments();
 
-    // 他の人が投稿・削除したコメントを即座に反映する（Realtime）
+    // 他の人が投稿・編集・削除したコメントを即座に反映する（Realtime）
     const channel = supabase
       .channel(`pin-comments-${pin.id}`)
       .on(
@@ -220,8 +223,15 @@ export function PinPanel({
                 ? prev
                 : [...prev, payload.new]
             );
+          } else if (payload.eventType === "UPDATE") {
+            setComments((previous) =>
+              previous.map((comment) => comment.id === payload.new.id
+                ? { ...comment, content: payload.new.content }
+                : comment),
+            );
           } else if (payload.eventType === "DELETE") {
             setComments((prev) => prev.filter((c) => c.id !== payload.old.id));
+            setEditingCommentId((current) => current === payload.old.id ? null : current);
           }
         }
       )
@@ -289,7 +299,7 @@ export function PinPanel({
       : await deleteCommentAsAdmin(comment.id);
 
     if (deleteErr?.code === "PGRST202" && !isOwnComment) {
-      setCommentError(ADMIN_COMMENT_DELETE_SETUP_MESSAGE);
+      setCommentError(ADMIN_COMMENT_DELETE_UNAVAILABLE_MESSAGE);
     } else if (deleteErr || (isOwnComment && !data)) {
       console.error("コメントの削除に失敗", deleteErr);
       setCommentError("コメントを削除できませんでした。再読み込みして最新のコメントを確認してください。");
@@ -299,6 +309,14 @@ export function PinPanel({
       if (String(comment.id) === focusedCommentId) onFocusedCommentDeleted?.(comment.id);
     }
     setDeletingCommentId(null);
+  }
+
+  function handleCommentSaved(commentId, content, originalContent) {
+    // 変更通知でもっと新しい本文を受け取っていた場合は、その表示を維持する。
+    setComments((previous) => previous.map((comment) =>
+      comment.id === commentId && comment.content === originalContent ? { ...comment, content } : comment,
+    ));
+    setEditingCommentId((current) => current === commentId ? null : current);
   }
 
   // 新規作成（onSave）と更新（onUpdate）を切り替える
@@ -741,7 +759,7 @@ export function PinPanel({
               )}
 
               {/* コメント一覧表示 */}
-              <div className="mt-2 max-h-40 overflow-y-auto space-y-2 pr-1">
+              <div className={`mt-2 ${editingCommentId === null ? "max-h-40" : "max-h-64"} space-y-2 overflow-y-auto pr-1`}>
                 {loadingComments ? (
                   <p className="text-xs text-slate-400">読み込み中...</p>
                 ) : comments.length === 0 ? (
@@ -750,7 +768,9 @@ export function PinPanel({
                   </p>
                 ) : (
                   comments.map((comment) => {
-                    const canDeleteComment = canManageContent(comment, currentUser?.id, isAdmin);
+                    const canManageComment = canManageContent(comment, currentUser?.id, isAdmin);
+                    const isEditingComment = canManageComment && editingCommentId === comment.id;
+                    const commentActionsDisabled = deletingCommentId !== null || editingCommentId !== null;
                     const isFocused = String(comment.id) === focusedCommentId;
 
                     return (
@@ -775,22 +795,42 @@ export function PinPanel({
                               )}
                             </span>
                           </div>
-                          <p className="mt-0.5 whitespace-pre-wrap break-words text-slate-700">
-                            {comment.content}
-                          </p>
+                          {isEditingComment ? (
+                            <CommentEditor
+                              commentId={comment.id}
+                              content={comment.content}
+                              onSave={(content, originalContent) => handleCommentSaved(comment.id, content, originalContent)}
+                              onCancel={() => setEditingCommentId(null)}
+                            />
+                          ) : (
+                            <p className="mt-0.5 whitespace-pre-wrap break-words text-slate-700">
+                              {comment.content}
+                            </p>
+                          )}
                         </div>
 
-                        {canDeleteComment && (
-                          <button
-                            type="button"
-                            onClick={() => handleDeleteComment(comment)}
-                            disabled={deletingCommentId !== null}
-                            className="shrink-0 text-[10px] text-slate-400 hover:text-red-500 disabled:opacity-40"
-                            aria-label="コメントを削除"
-                            title="コメントを削除"
-                          >
-                            ×
-                          </button>
+                        {canManageComment && !isEditingComment && (
+                          <div className="flex shrink-0 items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => setEditingCommentId(comment.id)}
+                              disabled={commentActionsDisabled}
+                              className="text-[10px] font-semibold text-rose-700 hover:underline disabled:opacity-40"
+                              aria-label="コメントを編集"
+                            >
+                              編集
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteComment(comment)}
+                              disabled={commentActionsDisabled}
+                              className="text-[10px] text-slate-400 hover:text-red-500 disabled:opacity-40"
+                              aria-label="コメントを削除"
+                              title="コメントを削除"
+                            >
+                              ×
+                            </button>
+                          </div>
                         )}
                       </div>
                     );
