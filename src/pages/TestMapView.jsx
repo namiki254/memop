@@ -5,9 +5,13 @@
 // 最後にMapViewを包んでいる
 
 
+import { useState } from "react";
 import { MapView } from "../components/MapView.jsx";
 
 export default function TestMapView() {
+    // 選択中のピンの強調表示（issue #18）をログインせずに確認できるようにする
+    const [selectedPinId, setSelectedPinId] = useState(null);
+
     // サンプルのマップ
     const sampleMap = {
         id: "map-1",
@@ -28,6 +32,8 @@ export default function TestMapView() {
     // （今、onPinClick={handlePinClick} になっている）
     const handlePinClick = (pin) => {
         console.log("クリックされたピン:", pin);
+        // 同じピンをもう一度押すと選択を解除する（詳細パネルを閉じた状態の確認用）
+        setSelectedPinId((current) => current === pin.id ? null : pin.id);
         // alert(`📍: ${pin.title} がクリックされました`);
     };
 
@@ -57,6 +63,7 @@ export default function TestMapView() {
                 <MapView
                     map={sampleMap}
                     pins={samplePins}
+                    selectedPinId={selectedPinId}
                     onPinClick={handlePinClick}
                 />
             </div>
