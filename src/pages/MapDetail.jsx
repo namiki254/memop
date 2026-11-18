@@ -1325,6 +1325,8 @@ export default function MapDetail({ currentUser, isAdmin }) {
                 ? { ...selectedPin, ...pendingPinAppearance }
                 : null
             }
+            // 詳細パネルで開いているピンをマップ上でも強調する（新規ピンは id が無いので対象外）
+            selectedPinId={selectedPin?.id ?? null}
             onPinClick={handlePinClick}
             onPinDoubleClick={handlePinDoubleClick}
             onMapClick={isEditingPin ? undefined : handleMapClick}

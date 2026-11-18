@@ -11,6 +11,7 @@ import { EmojiPin } from "./EmojiPin"
  * props:
  *   map        maps テーブルの1行．{ id, title, description, image_url, created_at }
  *   pins       pins テーブルの配列．{ id, map_id, x, y, title, content, pin_type, created_at }
+ *   selectedPinId 詳細パネルで開いているピンの id．そのピンを強調表示する（未選択なら null）
  *   onPinClick ピンがクリックされたときに呼ぶ．引数はそのピン
  *   onMapClick 画像の何もない場所がクリックされたときに呼ぶ．引数は x と y（どちらも0〜1）
  *
@@ -21,7 +22,7 @@ import { EmojiPin } from "./EmojiPin"
  */
 
 
-export function MapView({ map, pins = [], pendingPin = null, onPinClick, onMapClick, onPinDoubleClick, movablePinId, onPinMove, }) {
+export function MapView({ map, pins = [], pendingPin = null, selectedPinId = null, onPinClick, onMapClick, onPinDoubleClick, movablePinId, onPinMove, }) {
   const { src: imageSrc, loading: imageLoading } = useMapImage(map?.image_url);
 
   // 拡大率（scale）、最大拡大率（maxScale）のStateを管理
@@ -309,10 +310,14 @@ export function MapView({ map, pins = [], pendingPin = null, onPinClick, onMapCl
           />
 
           {/* ピンを重ねて表示 */}
-          {pins.map((pin) => (
+          {pins.map((pin) => {
+            const isSelected = selectedPinId != null && pin.id === selectedPinId;
+
+            return (
             <button
               key={pin.id}
               type="button"
+              aria-pressed={isSelected}
               onClick={(event) => {
                 event.stopPropagation();
 
@@ -342,7 +347,11 @@ export function MapView({ map, pins = [], pendingPin = null, onPinClick, onMapCl
                 left: `${pin.x * 100}%`,
                 top: `${pin.y * 100}%`,
               }}
-              className={`absolute -translate-x-1/2 -translate-y-full transition-transform hover:scale-125 focus:outline-none ${movablePinId === pin.id
+              // 選択中のピンは少し大きくし，他のピンより手前に出して重なっても隠れないようにする
+              className={`absolute origin-bottom -translate-x-1/2 -translate-y-full transition-transform hover:scale-125 focus:outline-none ${isSelected
+                ? "z-10 scale-125"
+                : ""
+                } ${movablePinId === pin.id
                 ? "touch-none cursor-grab animate-pulse opacity-70 active:cursor-grabbing"
                 : ""
                 }`}
@@ -353,19 +362,26 @@ export function MapView({ map, pins = [], pendingPin = null, onPinClick, onMapCl
                 // 普通のピン（絵文字がそのまま浮くだけ）とは見た目を変える．
                 // 実際の建物の案内サインに寄せて，扉の絵文字＋行き先の名前を出す．
                 <span className="flex flex-col items-center">
-                  <span className="flex h-9 w-9 items-center justify-center rounded-full bg-blue-600 text-lg text-white shadow-lg ring-2 ring-white">
+                  <span className={`flex h-9 w-9 items-center justify-center rounded-full bg-blue-600 text-lg text-white shadow-lg ${isSelected
+                    ? "ring-4 ring-blue-900 ring-offset-2 ring-offset-white"
+                    : "ring-2 ring-white"
+                    }`}>
                     🚪
                   </span>
-                  <span className="mt-0.5 max-w-24 truncate rounded bg-blue-600 px-1.5 py-0.5 text-[10px] font-bold text-white shadow">
+                  <span className={`mt-0.5 max-w-24 truncate rounded bg-blue-600 px-1.5 py-0.5 text-[10px] font-bold text-white shadow ${isSelected
+                    ? "ring-2 ring-blue-900"
+                    : ""
+                    }`}>
                     {pin.title}
                   </span>
                 </span>
               ) : (
-                <EmojiPin emoji={getPinEmoji(pin.pin_type)} size="sm" />
+                <EmojiPin emoji={getPinEmoji(pin.pin_type)} selected={isSelected} size="sm" />
 
               )}
             </button>
-          ))}
+            );
+          })}
 
           {/* 新しいピンの追加予定位置 */}
           {pendingPin && (
