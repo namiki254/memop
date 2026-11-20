@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { supabase } from "../lib/supabase.js";
 import ErrorMessage from "../components/ErrorMessage.jsx";
 import Loading from "../components/Loading.jsx";
+import { loadCreatorUsernames } from "../lib/creatorUsernames.js";
 
 const PAGE_SIZE = 50;
 
@@ -18,13 +19,16 @@ export default function AdminMaps({ isAdmin, roleChecked }) {
       const start = page * PAGE_SIZE;
       const { data, error } = await supabase
         .from("maps")
-        .select("id, title, is_public")
+        // 作成者IDをユーザー管理へのリンクに使う。
+        .select("id, title, is_public, user_id")
         .order("created_at", { ascending: false })
         .order("id")
         .range(start, start + PAGE_SIZE)
         .abortSignal(controller.signal);
 
-      if (!controller.signal.aborted) setResult({ page, data, error });
+      if (controller.signal.aborted) return;
+      const maps = error ? { data, error } : await loadCreatorUsernames(data ?? [], controller.signal);
+      if (!controller.signal.aborted) setResult({ page, ...maps });
     }
 
     loadMaps();
@@ -58,6 +62,17 @@ export default function AdminMaps({ isAdmin, roleChecked }) {
                   <span className="min-w-0 break-words font-medium text-slate-800">{map.title}</span>
                   <span className="shrink-0 text-xs text-slate-600">{map.is_public ? "公開" : "非公開"}</span>
                 </Link>
+                <p className="break-all px-4 pb-3 text-xs text-slate-500">
+                  作成者　{map.user_id ? (
+                    <Link
+                      to={`/admin/users?${new URLSearchParams({ user: map.user_id })}`}
+                      className="text-rose-700 underline underline-offset-2"
+                      title="ユーザー管理で作成者を開く"
+                    >
+                      {map.creator_username ? `@${map.creator_username}` : map.user_id}
+                    </Link>
+                  ) : "作成者不明"}
+                </p>
               </li>
             ))}
           </ul>

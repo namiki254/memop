@@ -7,7 +7,7 @@ const PAGE_SIZE = 50;
 const buttonClass = "rounded-md border border-rose-200 px-3 py-2 text-sm font-semibold text-rose-700 hover:bg-rose-50 disabled:opacity-40";
 
 export default function AdminUsers({ currentUserId, linkedUserId, isAdmin, roleChecked, refreshRole }) {
-  // 投稿者リンクから来たときは、どのページに載っているかを Supabase に問い合わせる。
+  // 各管理画面のユーザーリンクから来たときは、該当ページを Supabase に問い合わせる。
   const [page, setPage] = useState(linkedUserId ? null : 0);
   const [listVersion, setListVersion] = useState(0);
   const [result, setResult] = useState(null);
@@ -47,9 +47,9 @@ export default function AdminUsers({ currentUserId, linkedUserId, isAdmin, roleC
 
       // 対象を探せない場合も、通常のユーザー一覧を開けるようにする。
       if (linkedPage?.error && linkedPage.error.code !== "22P02") {
-        linkMessage = "投稿者のリンクを開けませんでした。下のユーザー一覧から投稿者を探してください。";
+        linkMessage = "ユーザーのリンクを開けませんでした。下のユーザー一覧から探してください。";
       } else if (linkedPage) {
-        linkMessage = "指定された投稿者がユーザー一覧に見つかりませんでした。";
+        linkMessage = "指定されたユーザーが一覧に見つかりませんでした。";
       }
 
       // 表示件数より1件多く取得し、次のページがあるかを確認する。
@@ -157,7 +157,7 @@ export default function AdminUsers({ currentUserId, linkedUserId, isAdmin, roleC
                     <p className="break-all font-medium text-slate-800">
                       {user.github_username || "GitHub ユーザー名なし"}
                       {user.user_id === currentUserId && <span className="ml-2 text-xs text-slate-500">自分</span>}
-                      {isLinkedUser && <span className="ml-2 text-xs text-rose-700">コメントの投稿者</span>}
+                      {isLinkedUser && <span className="ml-2 text-xs text-rose-700">選択中のユーザー</span>}
                     </p>
                     <p className="break-all text-sm text-slate-600">{user.email || "メールアドレス未登録"}</p>
                     <p className="break-all text-xs text-slate-500">{user.user_id}</p>
