@@ -10,6 +10,7 @@ import MapList from "./pages/MapList.jsx";
 import MapUpload from "./pages/MapUpload.jsx";
 import MapDetail from "./pages/MapDetail.jsx";
 import AdminMaps from "./pages/AdminMaps.jsx";
+import AdminFolders from "./pages/AdminFolders.jsx";
 import AdminUsers from "./pages/AdminUsers.jsx";
 import AdminComments from "./pages/AdminComments.jsx";
 import Loading from "./components/Loading.jsx";
@@ -122,6 +123,9 @@ export default function App() {
             <Link to="/admin/maps" className="rounded-md px-3 py-2 text-sm font-semibold text-rose-700 hover:bg-rose-50">
               マップ管理
             </Link>
+            <Link to="/admin/folders" className="rounded-md px-3 py-2 text-sm font-semibold text-rose-700 hover:bg-rose-50">
+              フォルダ管理
+            </Link>
             <Link to="/admin/users" className="rounded-md px-3 py-2 text-sm font-semibold text-rose-700 hover:bg-rose-50">
               ユーザー管理
             </Link>
@@ -151,6 +155,10 @@ export default function App() {
           <Route
             path="/admin/maps"
             element={<AdminMaps key={accessKey} isAdmin={isAdmin} roleChecked={roleChecked} />}
+          />
+          <Route
+            path="/admin/folders"
+            element={<AdminFolders key={accessKey} isAdmin={isAdmin} roleChecked={roleChecked} refreshRole={refreshRole} />}
           />
           <Route
             path="/admin/users"

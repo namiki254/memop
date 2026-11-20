@@ -76,6 +76,8 @@ export default function MapList({ currentUser, authChecked, isAdmin }) {
   const [isEditingFolder, setIsEditingFolder] = useState(false);
   const [editingFolderName, setEditingFolderName] = useState("");
   const [updatingFolder, setUpdatingFolder] = useState(false);
+  const [deletingFolderId, setDeletingFolderId] = useState(null);
+  const [folderListVersion, setFolderListVersion] = useState(0);
 
   // URLコピー完了メッセージの表示状態
   const [copied, setCopied] = useState(false);
@@ -469,7 +471,7 @@ export default function MapList({ currentUser, authChecked, isAdmin }) {
     return () => {
       cancelled = true;
     };
-  }, [folderId, currentUser, authChecked]);
+  }, [folderId, currentUser, authChecked, folderListVersion]);
 
   function startCreatingFolder() {
     setFolderError("");
@@ -618,7 +620,7 @@ export default function MapList({ currentUser, authChecked, isAdmin }) {
 
   // 今開いているフォルダの名前を更新する
   async function handleUpdateFolder() {
-    if (!folder || updatingFolder) return;
+    if (!folder || updatingFolder || deletingFolderId !== null) return;
 
     const name = editingFolderName.trim();
 
@@ -636,28 +638,27 @@ export default function MapList({ currentUser, authChecked, isAdmin }) {
         error: userError,
       } = await supabase.auth.getUser();
 
-      // 保存直前にも、作成者本人か確認する
-      if (userError || !user || user.id !== folder.user_id) {
+      // 保存直前にログイン中の人を確認する。管理者かの最終判断は Supabase が行う。
+      if (userError || !canManageContent(folder, user?.id, isAdmin && user?.id === currentUser?.id)) {
         setFolderError("このフォルダは編集できません。");
         return;
       }
 
-      const { data: updatedFolder, error: updateError } = await supabase
-        .from("folders")
-        .update({ name })
-        .eq("id", folder.id)
-        .eq("user_id", user.id)
-        .select()
-        .maybeSingle();
+      // 名前だけを渡し、作成者・階層はデータベース側で保持する。
+      const { data: updatedFolder, error: updateError } = await supabase.rpc("rename_folder", {
+        target_folder_id: folder.id,
+        expected_name: folder.name,
+        new_name: name,
+      });
 
       if (updateError) {
         console.error("フォルダ名の更新に失敗", updateError);
-        setFolderError(`更新に失敗しました。${updateError.message}`);
+        setFolderError("フォルダ名を保存できませんでした。再読み込みして最新の状態を確認してください。");
         return;
       }
 
       if (!updatedFolder) {
-        setFolderError("フォルダを更新できませんでした。");
+        setFolderError("フォルダを更新できませんでした。入力した名前を控えて再読み込みしてください。");
         return;
       }
 
@@ -679,57 +680,46 @@ export default function MapList({ currentUser, authChecked, isAdmin }) {
     }
   }
 
-  // フォルダを削除する．
-  // user_id が null の「持ち主なし」フォルダは誰でも削除できる仕様だが，
-  // それでも未ログインの匿名ユーザーには許可しない．
-  async function handleDeleteFolder(folder) {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    const canDelete =
-      folder.user_id === null ? Boolean(user) : user?.id === folder.user_id;
-
-    if (!canDelete) {
-      setFolderError("このフォルダは削除できません．");
-      return;
-    }
-
-    if (!window.confirm(`「${folder.name}」を削除しますか？`)) {
-      return;
-    }
-
-    // RLSに加えて，クライアント側でも所有者条件を絞り込んでおく（多層防御）．
-    // ここは削除対象自身の user_id ではなく，今ログインしている人の id で絞る．
-    let deleteQuery = supabase.from("folders").delete().eq("id", folder.id);
-    deleteQuery =
-      folder.user_id === null
-        ? deleteQuery.is("user_id", null)
-        : deleteQuery.eq("user_id", user.id);
-
-    const { error: deleteError } = await deleteQuery;
-
-    if (deleteError) {
-      console.error("フォルダの削除に失敗", deleteError);
-      setFolderError(`削除に失敗しました．${deleteError.message}`);
-      return;
-    }
-
-    // 手元の一覧からも即座に取り除く．
-    // 削除したのが「今いる階層の子フォルダ」の場合，下の navigate は
-    // すでにいるURLと同じ場所を指すため何も起きず（＝一覧が再取得されず），
-    // これをしないと削除したはずのカードが画面に残り続けてしまう．
-    setChildFolders((current) =>
-      current.filter((f) => f.id !== folder.id),
-    );
-
-    // 削除したフォルダ自身を表示していた場合は，親へ戻る（親がなければホーム）。
-    if (folder.id === folderId) {
-      if (folder.parent_folder_id) {
-        navigate(`/folders/${folder.parent_folder_id}`);
-      } else {
-        navigate("/");
+  async function handleDeleteFolder(targetFolder) {
+    if (updatingFolder || deletingFolderId !== null) return;
+    setDeletingFolderId(targetFolder.id);
+    setFolderError("");
+    try {
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      const canDelete = !userError && user && (
+        targetFolder.user_id === null
+        || canManageContent(targetFolder, user.id, isAdmin && user.id === currentUser?.id)
+      );
+      if (!canDelete) {
+        setFolderError("このフォルダは削除できません。");
+        return;
       }
+
+      // マップと子フォルダの移動先を、削除を確定する前に伝える。
+      const destination = targetFolder.parent_folder_id ? "親フォルダ" : "ホーム";
+      if (!window.confirm(`「${targetFolder.name}」を削除しますか？\n中のマップと子フォルダは${destination}へ移動します。`)) return;
+
+      const { data: deleted, error: deleteError } = await supabase.rpc("delete_folder", {
+        target_folder_id: targetFolder.id,
+        expected_parent_folder_id: targetFolder.parent_folder_id,
+      });
+      if (deleteError) {
+        console.error("フォルダの削除に失敗", deleteError);
+        setFolderError("フォルダを削除できませんでした。再読み込みして最新の状態を確認してください。");
+        return;
+      }
+
+      // 移動されたマップと子フォルダも、保存先の一覧を取り直して反映する。
+      setFolderListVersion((version) => version + 1);
+      if (!deleted) setFolderError("このフォルダはすでに削除されています。");
+      if (targetFolder.id === folderId) {
+        navigate(targetFolder.parent_folder_id ? `/folders/${targetFolder.parent_folder_id}` : "/");
+      }
+    } catch (deleteError) {
+      console.error("フォルダ削除中の通信に失敗", deleteError);
+      setFolderError("フォルダの削除結果を確認できませんでした。再読み込みしてください。");
+    } finally {
+      setDeletingFolderId(null);
     }
   }
 
@@ -918,6 +908,7 @@ export default function MapList({ currentUser, authChecked, isAdmin }) {
         {folder && isEditingFolder ? (
           <input
             type="text"
+            aria-label="フォルダ名"
             value={editingFolderName}
             onChange={(e) => setEditingFolderName(e.target.value)}
             maxLength={100}
@@ -953,15 +944,15 @@ export default function MapList({ currentUser, authChecked, isAdmin }) {
             </div>
           )}
 
-          {/* 作成者だけ編集・削除できる */}
-          {folder && currentUser?.id === folder.user_id && (
+          {/* 作成者本人と管理者に、名前変更・削除の操作を表示する。 */}
+          {canManageContent(folder, currentUser?.id, isAdmin) && (
             <>
               {isEditingFolder ? (
                 <>
                   <button
                     type="button"
                     onClick={() => setIsEditingFolder(false)}
-                    disabled={updatingFolder}
+                    disabled={updatingFolder || deletingFolderId !== null}
                     className="rounded border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50"
                   >
                     キャンセル
@@ -970,7 +961,7 @@ export default function MapList({ currentUser, authChecked, isAdmin }) {
                   <button
                     type="button"
                     onClick={handleUpdateFolder}
-                    disabled={updatingFolder || editingFolderName.trim() === ""}
+                    disabled={updatingFolder || deletingFolderId !== null || editingFolderName.trim() === ""}
                     className="rounded bg-slate-800 px-3 py-1.5 text-sm text-white disabled:bg-slate-300"
                   >
                     {updatingFolder ? "保存中..." : "保存"}
@@ -983,6 +974,7 @@ export default function MapList({ currentUser, authChecked, isAdmin }) {
                     setEditingFolderName(folder.name);
                     setIsEditingFolder(true);
                   }}
+                  disabled={deletingFolderId !== null}
                   className="rounded border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
                 >
                   編集
@@ -992,7 +984,7 @@ export default function MapList({ currentUser, authChecked, isAdmin }) {
               <button
                 type="button"
                 onClick={() => handleDeleteFolder(folder)}
-                disabled={updatingFolder}
+                disabled={updatingFolder || deletingFolderId !== null}
                 className="rounded border border-red-300 px-3 py-1.5 text-sm text-red-600 hover:bg-red-50 disabled:opacity-50"
               >
                 削除
@@ -1213,9 +1205,10 @@ export default function MapList({ currentUser, authChecked, isAdmin }) {
 
                       {currentUser &&
                         (f.user_id === null ||
-                          currentUser.id === f.user_id) && (
+                          canManageContent(f, currentUser.id, isAdmin)) && (
                           <MenuItem
                             danger
+                            disabled={updatingFolder || deletingFolderId !== null}
                             onClick={() => {
                               setOpenMenu(null);
                               handleDeleteFolder(f);
