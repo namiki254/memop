@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useLayoutEffect } from "react";
 import { getPinEmoji } from "../lib/pinTypes";
 import { useMapImage } from "../lib/mapImages";
 import { EmojiPin } from "./EmojiPin"
@@ -42,13 +42,33 @@ export function MapView({ map, pins = [], pendingPin = null, selectedPinId = nul
   const moveFrameRef = useRef(null);
   const pendingMoveRef = useRef(null);
 
+  // ホイールで拡大・縮小するときに使う値（#19）
+  // ホイール操作中は追いかけるアニメーションを切り，ポインターの下の地点がずれないようにする
+  const [animateZoom, setAnimateZoom] = useState(true);
+  const scaleRef = useRef(scale);
+  const maxScaleRef = useRef(maxScale);
+  const wheelDeltaRef = useRef(0);
+  const zoomAnchorRef = useRef(null);
+  // スマホで2本指を広げる・つまむ（ピンチ）操作の開始時の状態
+  const pinchRef = useRef(null);
+  scaleRef.current = scale;
+  maxScaleRef.current = maxScale;
+
   const MIN_SCALE = 1; // 最小表示を1倍に設定
   const SCALE_STEP = 0.25; // 0.25刻みのスケール
+  // ホイールをこの量（px）回すごとに1段階（SCALE_STEP）拡大・縮小する．
+  // マウスは1ノッチでおおむね100px なので1段階，タッチパッドは細かく届くので貯めてから動かす．
+  const WHEEL_STEP_DELTA = 40;
+  const WHEEL_NOTCH_DELTA = 100; // マウスホイール1ノッチ分のおおよその量（px）
 
-  const handleZoomIn = () =>
+  const handleZoomIn = () => {
+    setAnimateZoom(true);
     setScale((prev) => Math.min(prev + SCALE_STEP, maxScale));
-  const handleZoomOut = () =>
+  };
+  const handleZoomOut = () => {
+    setAnimateZoom(true);
     setScale((prev) => Math.max(prev - SCALE_STEP, MIN_SCALE));
+  };
 
   // 画像読み込みのタイミングで、表示サイズ（clientWidth）と元画像サイズ（naturalWidth）からmaxScaleを計算
   const handleImageLoad = (e) => {
@@ -85,6 +105,178 @@ export function MapView({ map, pins = [], pendingPin = null, selectedPinId = nul
       }
     };
   }, []);
+
+  // マップ上でホイールを回したら拡大・縮小する（#19）．
+  // React の onWheel はブラウザの都合で preventDefault() が効かない（passive）ため，
+  // addEventListener で passive: false を指定して直接登録する．
+  useEffect(() => {
+    const scrollArea = scrollAreaRef.current;
+    if (!scrollArea) return;
+
+    function handleWheel(event) {
+      const mapArea = mapAreaRef.current;
+      // 地図（画像とピン）の上でだけ反応する．余白やズームボタンの上では通常どおりスクロールさせる
+      if (!mapArea || !mapArea.contains(event.target)) return;
+
+      // 画像の大きさが分かるまでは拡大できないので，通常のスクロールに任せる
+      const rect = mapArea.getBoundingClientRect();
+      if (rect.width === 0 || rect.height === 0) return;
+
+      // 地図の上では，ページやスクロール領域が動かないようにする
+      event.preventDefault();
+
+      // deltaMode が行単位・ページ単位のブラウザもあるので px に揃える
+      let delta = event.deltaY;
+      if (event.deltaMode === 1) delta *= 16;
+      else if (event.deltaMode === 2) delta *= scrollArea.clientHeight;
+
+      // 回す向きが変わったら貯めた量を捨てる
+      if (Math.sign(delta) !== Math.sign(wheelDeltaRef.current)) {
+        wheelDeltaRef.current = 0;
+      }
+      wheelDeltaRef.current += delta;
+      if (Math.abs(wheelDeltaRef.current) < WHEEL_STEP_DELTA) return;
+
+      // 上に回す（deltaY が負）と拡大，下に回すと縮小．上限・下限はボタンと同じ
+      const direction = wheelDeltaRef.current < 0 ? 1 : -1;
+      // 一度に大きく回したとき（数ノッチ分がまとめて届いたとき）は，その分だけ段階を進める
+      const steps = Math.max(1, Math.round(Math.abs(wheelDeltaRef.current) / WHEEL_NOTCH_DELTA));
+      wheelDeltaRef.current = 0;
+
+      const current = scaleRef.current;
+      const next = Math.min(
+        Math.max(current + direction * steps * SCALE_STEP, MIN_SCALE),
+        maxScaleRef.current,
+      );
+      if (next === current) return;
+
+      // ポインターが地図のどこ（割合）にあるかを覚えておき，拡大・縮小後に同じ地点がポインターの下に来るようにする
+      zoomAnchorRef.current = {
+        ratioX: (event.clientX - rect.left) / rect.width,
+        ratioY: (event.clientY - rect.top) / rect.height,
+        clientX: event.clientX,
+        clientY: event.clientY,
+      };
+      scaleRef.current = next;
+      setAnimateZoom(false);
+      setScale(next);
+    }
+
+    scrollArea.addEventListener("wheel", handleWheel, { passive: false });
+    return () => scrollArea.removeEventListener("wheel", handleWheel);
+    // 画像が表示されて初めてスクロール領域が作られるので，imageSrc が変わったら付け直す
+  }, [imageSrc]);
+
+  /**
+   * 地図上の地点（anchor.ratioX, ratioY：地図に対する割合）が，
+   * 画面上の位置（anchor.clientX, clientY）に来るようにスクロールする．
+   */
+  function scrollPointUnder(anchor) {
+    const scrollArea = scrollAreaRef.current;
+    const mapArea = mapAreaRef.current;
+    if (!scrollArea || !mapArea) return;
+
+    const rect = mapArea.getBoundingClientRect();
+    // 拡大・縮小後に，覚えておいた地点が画面のどこに来たか
+    const pointX = rect.left + anchor.ratioX * rect.width;
+    const pointY = rect.top + anchor.ratioY * rect.height;
+
+    // その地点がポインター（指）の位置に戻るようにスクロールする
+    scrollArea.scrollLeft += pointX - anchor.clientX;
+    scrollArea.scrollTop += pointY - anchor.clientY;
+  }
+
+  // ホイールやピンチで拡大・縮小した直後，描画が確定してから（画面に出る前に）スクロール位置を合わせる
+  useLayoutEffect(() => {
+    const anchor = zoomAnchorRef.current;
+    zoomAnchorRef.current = null;
+    if (anchor) scrollPointUnder(anchor);
+  }, [scale]);
+
+  // スマホでは，地図の上で2本指を広げると拡大，つまむと縮小する（#19）．
+  // ホイールと同じく preventDefault() を使うので passive: false で直接登録する．
+  useEffect(() => {
+    const scrollArea = scrollAreaRef.current;
+    if (!scrollArea) return;
+
+    // 2本の指の中間点と，指どうしの距離
+    function getPinchPoint(touches) {
+      const [a, b] = [touches[0], touches[1]];
+      return {
+        x: (a.clientX + b.clientX) / 2,
+        y: (a.clientY + b.clientY) / 2,
+        distance: Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY),
+      };
+    }
+
+    function handleTouchStart(event) {
+      pinchRef.current = null;
+      if (event.touches.length !== 2) return;
+
+      // 2本とも地図（画像とピン）の上に置いたときだけピンチとして扱う
+      const mapArea = mapAreaRef.current;
+      if (!mapArea) return;
+      if (![...event.touches].every((touch) => mapArea.contains(touch.target))) return;
+
+      const rect = mapArea.getBoundingClientRect();
+      if (rect.width === 0 || rect.height === 0) return;
+
+      const { x, y, distance } = getPinchPoint(event.touches);
+      if (distance === 0) return;
+
+      // 指を置いたときに2本の指の間にあった地点を覚えておき，ピンチ中もその地点を指の間に保つ
+      pinchRef.current = {
+        startDistance: distance,
+        startScale: scaleRef.current,
+        ratioX: (x - rect.left) / rect.width,
+        ratioY: (y - rect.top) / rect.height,
+      };
+    }
+
+    function handleTouchMove(event) {
+      const pinch = pinchRef.current;
+      if (!pinch || event.touches.length !== 2) return;
+
+      // ブラウザがページ全体を拡大・縮小しないようにする
+      event.preventDefault();
+
+      const { x, y, distance } = getPinchPoint(event.touches);
+      // 指の間隔が開いた割合だけ拡大する．上限・下限はボタンと同じ
+      const next = Math.min(
+        Math.max(pinch.startScale * (distance / pinch.startDistance), MIN_SCALE),
+        maxScaleRef.current,
+      );
+      const anchor = { ratioX: pinch.ratioX, ratioY: pinch.ratioY, clientX: x, clientY: y };
+
+      if (next === scaleRef.current) {
+        // 上限・下限で倍率が変わらなくても，2本指を動かした分だけ地図を動かす
+        scrollPointUnder(anchor);
+        return;
+      }
+
+      zoomAnchorRef.current = anchor;
+      scaleRef.current = next;
+      setAnimateZoom(false);
+      setScale(next);
+    }
+
+    function handleTouchEnd(event) {
+      // 指が1本以下になったらピンチ終了．残った1本指は通常どおりスクロールに使える
+      if (event.touches.length < 2) pinchRef.current = null;
+    }
+
+    scrollArea.addEventListener("touchstart", handleTouchStart, { passive: true });
+    scrollArea.addEventListener("touchmove", handleTouchMove, { passive: false });
+    scrollArea.addEventListener("touchend", handleTouchEnd);
+    scrollArea.addEventListener("touchcancel", handleTouchEnd);
+    return () => {
+      scrollArea.removeEventListener("touchstart", handleTouchStart);
+      scrollArea.removeEventListener("touchmove", handleTouchMove);
+      scrollArea.removeEventListener("touchend", handleTouchEnd);
+      scrollArea.removeEventListener("touchcancel", handleTouchEnd);
+    };
+    // 画像が表示されて初めてスクロール領域が作られるので，imageSrc が変わったら付け直す
+  }, [imageSrc]);
 
   // 右クリックドラッグ中のマウス移動を画面全体で監視する
   useEffect(() => {
@@ -285,7 +477,9 @@ export function MapView({ map, pins = [], pendingPin = null, selectedPinId = nul
         */}
         <div
           ref={mapAreaRef}
-          className="relative mx-auto leading-none transition-all duration-150 sm:m-auto"
+          // ボタンでの拡大・縮小はなめらかに動かす．ホイールのときはポインター位置を保つためアニメーションしない
+          // touch-pan-x touch-pan-y：地図の上では1本指のスクロールだけブラウザに任せ，2本指のピンチはページ全体ではなく地図の拡大・縮小に使う
+          className={`relative mx-auto touch-pan-x touch-pan-y leading-none sm:m-auto ${animateZoom ? "transition-all duration-150" : ""}`}
           style={
             isScaled
               ? {
