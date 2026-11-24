@@ -2,9 +2,9 @@
 
 画像をマップとして登録し、気になる場所にピンを立ててメモやコメントを残せる Web アプリです。マップはフォルダに整理でき、公開マップを共有したり、あとで見たいマップを保存したりできます。
 
-React、Vite、Supabase を使っています。ログインは GitHub またはメールで行います。
+React、Vite、Supabase を使っています。ログインは GitHub、Google、またはメールで行います。
 
-Supabase Auth にはログイン用メールの送信回数に上限があるため、できるだけ GitHub アカウントでログインしてください。
+Supabase Auth にはログイン用メールの送信回数に上限があるため、できるだけ GitHub または Google アカウントでログインしてください。
 
 ## 開発の進め方
 
@@ -42,6 +42,42 @@ npm run dev
 チームの Supabase には、マップ・ピン・コメントなどのテーブルと、画像を保存する `map-images` バケットが用意されています。ローカル起動時は、そのプロジェクトに接続すれば使えます。開発中に投稿すると、接続先のデータベースに保存されます。
 
 `Could not find the table 'public.folders' in the schema cache` が出たら、まず `VITE_SUPABASE_URL` が目的のプロジェクトを指しているかと、そのプロジェクトの Table Editor に `public.folders` があるかを確認してください。
+
+## Google ログインの設定
+
+Google アカウントでログインできるようにするには、Supabase と Google Cloud Console で設定が必要です。
+
+### 1. Google Cloud Console での設定
+
+1. [Google Cloud Console](https://console.cloud.google.com/) にアクセス
+2. プロジェクトを選択（または新規作成）
+3. **APIs & Services** → **Credentials** に移動
+4. **Create Credentials** → **OAuth client ID** を選択
+5. Application type で **Web application** を選択
+6. **Authorized JavaScript origins** に以下を追加：
+   - `http://localhost:5173`（ローカル開発用）
+   - 本番環境のURL（例：`https://your-app.vercel.app`）
+7. **Authorized redirect URIs** に Supabase のコールバック URL を追加：
+   - `https://[YOUR-PROJECT-REF].supabase.co/auth/v1/callback`
+   - `[YOUR-PROJECT-REF]` は Supabase の Project URL から取得
+8. 作成後、**Client ID** と **Client Secret** をコピー
+
+### 2. Supabase での設定
+
+1. Supabase の管理画面を開く
+2. **Authentication** → **Providers** に移動
+3. **Google** プロバイダを有効化
+4. Google Cloud Console でコピーした **Client ID** と **Client Secret** を入力
+5. **Save** をクリック
+
+### 3. 動作確認
+
+1. ローカル環境で `npm run dev` を実行
+2. ブラウザで `http://localhost:5173` を開く
+3. **Google ログイン** ボタンをクリック
+4. Google アカウントでログインできることを確認
+
+**注意**: Google Cloud Console で設定した Authorized redirect URIs にアクセス元の URL（ローカルまたは本番）が含まれていないと、ログインに失敗します。
 
 ## ビルドとチェック
 
