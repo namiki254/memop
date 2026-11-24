@@ -1,3 +1,6 @@
+import MapVisibilitySelect from "../components/MapVisibilitySelect.jsx";
+import { mapVisibilityValues } from "../lib/mapVisibility.js";
+import { getMapCreationErrorMessage, isMapVisibilityMissing, MAP_VISIBILITY_NOT_READY_MESSAGE } from "../lib/mapCreationErrors.js";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "../lib/supabase";
@@ -96,8 +99,8 @@ export default function MapUpload() {
   // 実際に表示できたことをここで確かめてから，送信を許可する．
   const [imageReady, setImageReady] = useState(false);
 
-  // 公開/非公開を管理するState
-  const [isPublic, setIsPublic] = useState(true);
+  // 公開範囲を管理するState
+  const [visibility, setVisibility] = useState("public");
 
   // プレビュー用のURLは，使い終わったら必ず解放する．
   // 放置するとブラウザが画像データを掴んだままになる．
@@ -199,6 +202,15 @@ export default function MapUpload() {
         return;
       }
 
+      // DBの移行が未適用なら、使われない画像をアップロードする前に止める。
+      const { error: schemaError } = await supabase.from("maps").select("visibility").limit(0);
+      if (schemaError) {
+        setError(isMapVisibilityMissing(schemaError)
+          ? MAP_VISIBILITY_NOT_READY_MESSAGE
+          : `マップ作成に必要な設定を確認できませんでした。${schemaError.message}`);
+        return;
+      }
+
       // ファイル名は毎回変える．同じ名前で上げると，上書きではなく
       // 「すでに存在します」というエラーになって失敗するため．
       const path = makeFileName(file);
@@ -229,7 +241,7 @@ export default function MapUpload() {
           image_url: urlData.publicUrl,
           user_id: user.id,
           folder_id: folderId || null,
-          is_public: isPublic,     // 保存処理追加
+          ...mapVisibilityValues(visibility),
         })
         .select()
         .single();
@@ -242,9 +254,7 @@ export default function MapUpload() {
         // 消しにいくと「行はあるのに画像だけ無い」という直せない壊れ方をしうる．
         // 使われないまま残った画像は，発表後にダッシュボードからまとめて消す．
         console.error("マップの保存に失敗", insertError);
-        setError(
-          `マップの保存に失敗しました．すでに作成されているかもしれないので，一覧を確認してからもう一度試してください．（${insertError.message}）`,
-        );
+        setError(getMapCreationErrorMessage(insertError));
         return;
       }
 
@@ -312,29 +322,7 @@ export default function MapUpload() {
           />
         </div>
 
-        {/* 公開/非公開の切替チェックボックス */}
-        <div className="flex items-start gap-3 rounded-lg border border-slate-200 bg-slate-50 p-4">
-          <div className="flex h-5 items-center">
-            <input
-              id="isPublic"
-              type="checkbox"
-              checked={isPublic}
-              onChange={(e) => setIsPublic(e.target.checked)}
-              disabled={submitting}
-              className="h-4 w-4 rounded border-slate-300 text-slate-800 focus:ring-slate-500"
-            />
-          </div>
-          <div className="text-sm">
-            <label htmlFor="isPublic" className="font-medium text-slate-700">
-              このマップを公開する
-            </label>
-            <p className="text-slate-500">
-              {isPublic
-                ? "URLを知っている人なら誰でも閲覧できます．"
-                : "自分だけが閲覧できます．他の人がURLを開いても表示されません．"}
-            </p>
-          </div>
-        </div>
+        <MapVisibilitySelect id="mapVisibility" value={visibility} onChange={setVisibility} disabled={submitting} />
 
         <div>
           <p className="text-sm font-bold text-[#685F5D]">

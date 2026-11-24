@@ -1,4 +1,6 @@
-import { useEffect, useState } from "react";
+import { getMapVisibility, getMapVisibilityLabel } from "../lib/mapVisibility.js";
+import { subscribeSavedMapsChanged } from "../lib/savedMaps.js";
+import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import { canManageContent } from "../lib/mapAccess";
@@ -37,6 +39,27 @@ function MapThumbnail({ map }) {
   );
 }
 
+function PublicMapsCard({ className = "" }) {
+  return (
+    <Link
+      to="/public-maps"
+      className={`group relative flex min-h-36 items-center gap-4 overflow-hidden rounded-2xl border border-rose-200 bg-gradient-to-br from-rose-50 via-white to-pink-50 p-5 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-rose-300 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400 focus-visible:ring-offset-2 ${className}`}
+    >
+      <span aria-hidden="true" className="absolute -right-6 -top-6 h-24 w-24 rounded-full border-8 border-rose-100/60" />
+      <span aria-hidden="true" className="relative grid h-14 w-14 shrink-0 place-items-center rounded-2xl bg-rose-500 text-white shadow-sm transition group-hover:bg-rose-600">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" className="h-8 w-8">
+          <circle cx="12" cy="12" r="9" />
+          <ellipse cx="12" cy="12" rx="4" ry="9" />
+          <path d="M3 12h18M5 6.5c4 2 10 2 14 0M5 17.5c4-2 10-2 14 0" />
+        </svg>
+      </span>
+      <div className="relative min-w-0">
+        <p className="text-lg font-bold text-rose-950">公開マップ</p>
+      </div>
+    </Link>
+  );
+}
+
 /**
  * マップ一覧ページ．
  *
@@ -46,7 +69,7 @@ function MapThumbnail({ map }) {
  * ネストできる．このページは「今いる階層の，子フォルダとマップだけ」を表示する．
  * フォルダに入っていないマップ（`folder_id` が `null`）は，トップ階層に出る．
  */
-export default function MapList({ currentUser, authChecked, isAdmin }) {
+export default function MapList({ currentUser, authChecked, isAdmin, publicOnly = false }) {
   const { folderId } = useParams();
   const navigate = useNavigate();
 
@@ -57,6 +80,7 @@ export default function MapList({ currentUser, authChecked, isAdmin }) {
   const [childFolders, setChildFolders] = useState([]);
   const [maps, setMaps] = useState([]);
   const [loading, setLoading] = useState(true);
+  const loadedListKey = useRef(null);
   const [error, setError] = useState(null);
   // 指定されたフォルダIDが存在しない・循環参照している場合
   const [folderNotFound, setFolderNotFound] = useState(false);
@@ -91,7 +115,7 @@ export default function MapList({ currentUser, authChecked, isAdmin }) {
     try {
       const map = maps.find((entry) => entry.id === id);
       const url = type === "map"
-        ? await getMapShareUrl(id, map?.is_public, canManageContent(map, currentUser?.id, isAdmin))
+        ? await getMapShareUrl(id, map, canManageContent(map, currentUser?.id, isAdmin))
         : new URL(`/folders/${id}`, window.location.origin).href;
       await navigator.clipboard.writeText(url);
 
@@ -179,6 +203,7 @@ export default function MapList({ currentUser, authChecked, isAdmin }) {
     return sortOrder === "asc" ? cmp : -cmp;
   });
   const isEmpty = visibleFolders.length === 0 && visibleMaps.length === 0;
+  const showPublicMapsCard = !folderId && !publicOnly;
 
   useEffect(() => {
     setIsEditingFolder(false);
@@ -189,13 +214,37 @@ export default function MapList({ currentUser, authChecked, isAdmin }) {
   useEffect(() => {
     let cancelled = false;
 
+    const listKey = JSON.stringify([folderId, publicOnly, currentUser?.id, authChecked]);
     async function load() {
-      setLoading(true);
+      if (loadedListKey.current !== listKey) setLoading(true);
       setError(null);
       setFolderNotFound(false);
 
       try {
         if (!authChecked) {
+          return;
+        }
+
+        if (publicOnly) {
+          // 全公開マップを取得してから、既存の名前検索・並び替えを適用する。
+          const publicMaps = [];
+          for (let start = 0; ; start += 500) {
+            const { data, error } = await supabase.from("maps")
+              .select(currentUser ? "*, map_favorites(user_id)" : "*")
+              .eq("visibility", "public").order("created_at", { ascending: false }).order("id")
+              .range(start, start + 499);
+            if (cancelled) return;
+            if (error) throw error;
+            publicMaps.push(...(data ?? []));
+            if (!data || data.length < 500) break;
+          }
+          setFolder(null);
+          setBreadcrumb([]);
+          setChildFolders([]);
+          setAllFolders([]);
+          setMaps(publicMaps.map((map) => ({ ...map,
+            is_favorited: (map.map_favorites ?? []).some((fav) => fav.user_id === currentUser?.id),
+          })));
           return;
         }
 
@@ -461,6 +510,7 @@ export default function MapList({ currentUser, authChecked, isAdmin }) {
         }
       } finally {
         if (!cancelled) {
+          if (authChecked) loadedListKey.current = listKey;
           setLoading(false);
         }
       }
@@ -472,7 +522,15 @@ export default function MapList({ currentUser, authChecked, isAdmin }) {
     return () => {
       cancelled = true;
     };
-  }, [folderId, currentUser, authChecked, folderListVersion]);
+  }, [folderId, currentUser, authChecked, folderListVersion, publicOnly]);
+
+  useEffect(() => {
+    function refresh() { if (document.visibilityState === "visible") setFolderListVersion((version) => version + 1); }
+    const unsubscribe = subscribeSavedMapsChanged(refresh);
+    window.addEventListener("focus", refresh);
+    const interval = window.setInterval(refresh, 30000);
+    return () => { unsubscribe(); window.removeEventListener("focus", refresh); window.clearInterval(interval); };
+  }, []);
 
   function startCreatingFolder() {
     setFolderError("");
@@ -845,7 +903,7 @@ export default function MapList({ currentUser, authChecked, isAdmin }) {
     );
   }
 
-  if (!folderId && !currentUser) {
+  if (!publicOnly && !folderId && !currentUser) {
     return (
       <div className="grid h-full place-items-center bg-[#fffaf5] px-4 py-8">
         <div className="w-full max-w-md rounded-3xl border border-rose-100 bg-white p-6 text-center shadow-sm">
@@ -853,6 +911,8 @@ export default function MapList({ currentUser, authChecked, isAdmin }) {
             📌
           </span>
 
+          <PublicMapsCard className="mt-4" />
+          <p className="mt-2 text-sm text-slate-600">公開マップはログインせずに閲覧できます。</p>
           <h2 className="mt-3 text-xl font-bold text-slate-800">
             ログインしてください
           </h2>
@@ -917,7 +977,7 @@ export default function MapList({ currentUser, authChecked, isAdmin }) {
           />
         ) : (
           <h2 className="w-full min-w-0 break-words text-2xl font-bold text-slate-800 lg:flex-1">
-            {folder ? folder.name : "マップ一覧"}
+            {publicOnly ? "公開マップ" : folder ? folder.name : "マップ一覧"}
           </h2>
         )}
 
@@ -993,13 +1053,13 @@ export default function MapList({ currentUser, authChecked, isAdmin }) {
             </>
           )}
 
-          <button
+          {!publicOnly && <button
             type="button"
             onClick={startCreatingFolder}
             className="shrink-0 whitespace-nowrap rounded border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
           >
             ＋ 新しいフォルダ
-          </button>
+          </button>}
         </div>
       </div>
 
@@ -1049,7 +1109,8 @@ export default function MapList({ currentUser, authChecked, isAdmin }) {
           type="text"
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
-          placeholder="マップ・フォルダを名前で検索"
+          placeholder={publicOnly ? "公開マップを名前で検索" : "マップ・フォルダを名前で検索"}
+          aria-label={publicOnly ? "公開マップ名検索" : "マップ・フォルダ名検索"}
           className="
             w-full max-w-sm
             rounded-full
@@ -1066,7 +1127,7 @@ export default function MapList({ currentUser, authChecked, isAdmin }) {
           "
         />
 
-        <button
+        {currentUser && <button
           type="button"
           onClick={() => setShowOnlyFavorites((prev) => !prev)}
           className={`flex items-center gap-1 rounded-full border px-3 py-1.5 text-sm transition ${showOnlyFavorites
@@ -1078,9 +1139,9 @@ export default function MapList({ currentUser, authChecked, isAdmin }) {
             ♥
           </span>
           お気に入りのみ
-        </button>
+        </button>}
 
-        <div className="flex items-center overflow-hidden rounded-full border border-rose-100 bg-white text-sm">
+        {!publicOnly && <div className="flex items-center overflow-hidden rounded-full border border-rose-100 bg-white text-sm">
           <button
             type="button"
             onClick={() => setDisplayType("all")}
@@ -1111,7 +1172,7 @@ export default function MapList({ currentUser, authChecked, isAdmin }) {
           >
             フォルダのみ
           </button>
-        </div>
+        </div>}
 
         <div className="flex items-center gap-2 text-sm text-[#817878]">
           <label htmlFor="sortKeySelect">並び替え:</label>
@@ -1137,7 +1198,7 @@ export default function MapList({ currentUser, authChecked, isAdmin }) {
         </div>
       </div>
 
-      {isEmpty ? (
+      {isEmpty && !showPublicMapsCard ? (
         <p className="mt-6 text-slate-500">
           {trimmedQuery
             ? `「${trimmedQuery}」に一致するものが見つかりません．`
@@ -1145,6 +1206,7 @@ export default function MapList({ currentUser, authChecked, isAdmin }) {
         </p>
       ) : (
         <div className="mt-6 grid auto-rows-fr grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {showPublicMapsCard && <PublicMapsCard />}
           {visibleFolders.map((f) => (
             <div
               key={f.id}
@@ -1310,7 +1372,7 @@ export default function MapList({ currentUser, authChecked, isAdmin }) {
                       : "bg-amber-100 text-amber-800"
                       }`}
                   >
-                    {map.is_public ? "公開" : "非公開"}
+                    {getMapVisibilityLabel(map)}
                   </span>
 
                   <div className="shrink-0">
@@ -1326,11 +1388,22 @@ export default function MapList({ currentUser, authChecked, isAdmin }) {
                       }
                       onClose={() => setOpenMenu(null)}
                     >
-                      <MenuItem onClick={() => copyItemUrl("map", map.id)}>
+                      {getMapVisibility(map) !== "private" && <MenuItem onClick={() => copyItemUrl("map", map.id)}>
                         {copiedMenu === `map-${map.id}`
                           ? "✓ コピーしました"
-                          : "🔗 URLをコピー"}
-                      </MenuItem>
+                          : "🔗 共有URLをコピー"}
+                      </MenuItem>}
+
+                      {currentUser && map.user_id !== currentUser.id && (
+                        <SaveToMyListButton
+                          itemType="map"
+                          itemId={map.id}
+                          ownerId={map.user_id}
+                          currentUser={currentUser}
+                          variant="menu"
+                          onSavedChange={() => setOpenMenu(null)}
+                        />
+                      )}
 
                       {canManageContent(map, currentUser?.id, isAdmin) && (
                         <MenuItem
@@ -1354,7 +1427,9 @@ export default function MapList({ currentUser, authChecked, isAdmin }) {
                   </Link>
                 )}
               </div>
-              {/* マップ作成者にだけ移動ボタンを表示する */}
+              {currentUser && map.user_id !== currentUser.id && (
+                <div className="px-4 pb-4 empty:hidden"><SaveToMyListButton itemType="map" itemId={map.id} ownerId={map.user_id} currentUser={currentUser} hideWhenSaved /></div>
+              )}
 
             </div>
           ))}

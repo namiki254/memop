@@ -51,6 +51,7 @@ export function PinPanel({
   saving = false,
   error = "",
   mapOptions = [],
+  readableMaps = mapOptions,
   onSave,
   onClose,
   onNavigate,
@@ -410,7 +411,7 @@ export function PinPanel({
     onEditCancel?.();
   }
 
-  const destinationMap = mapOptions.find(
+  const destinationMap = readableMaps.find(
     (option) => option.id === pin?.link_map_id,
   );
 
@@ -545,7 +546,7 @@ export function PinPanel({
             {kind === "button" ? (
               <>
                 <p className="mt-3 text-xs text-[#817878]">
-                  移動先には、閲覧できるURL限定公開マップだけを選べます。
+                  移動先には、自分が作成したマップと保存したマップのうち、閲覧できる公開・URL限定公開マップを選べます。
                 </p>
                 <label className="mt-3 flex cursor-pointer items-center gap-2 text-xs text-[#685F5D]">
                   <input
@@ -728,7 +729,7 @@ export function PinPanel({
             )}
             {!saving && title.trim() !== "" && kind === "button" && !selectedMapIsVisible && (
               <p className="mt-2 text-xs text-slate-500">
-                URL限定公開の移動先を選ぶと保存できます。
+                移動先のマップを選ぶと保存できます。
               </p>
             )}
           </form>

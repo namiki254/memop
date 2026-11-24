@@ -141,6 +141,7 @@ export default function App() {
       <main className="min-h-0 min-w-0 flex-1 overflow-x-hidden">
         <Routes>
           <Route path="/" element={mapList} />
+          <Route path="/public-maps" element={<MapList key={`public-${accessKey}`} currentUser={currentUser} authChecked={authChecked} isAdmin={isAdmin} publicOnly />} />
           <Route path="/folders/:folderId" element={mapList} />
           <Route path="/maps/new" element={<MapUpload />} />
           <Route

@@ -1,3 +1,4 @@
+import { getMapVisibilityLabel } from "../lib/mapVisibility.js";
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import CommentEditor from "../components/CommentEditor.jsx";
@@ -147,7 +148,7 @@ export default function AdminComments({ isAdmin, roleChecked, refreshRole }) {
                     >
                       {comment.map_title || "無題のマップ"} / {comment.pin_title || "無題のピン"}
                     </Link>
-                    <span className="text-xs text-slate-600">{comment.is_public ? "公開" : "非公開"}</span>
+                    <span className="text-xs text-slate-600">{getMapVisibilityLabel(comment)}</span>
                     {!isEditingComment && (
                       <div className="ml-auto flex gap-2">
                         <button
