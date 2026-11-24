@@ -6,6 +6,7 @@ import { getGithubUsername } from "../lib/displayName";
 import { canManageContent } from "../lib/mapAccess";
 import { ADMIN_COMMENT_DELETE_UNAVAILABLE_MESSAGE, deleteCommentAsAdmin } from "../lib/pinComments";
 import CommentEditor from "./CommentEditor.jsx";
+import { TABELOG_URL_MAX_LENGTH, isTabelogUrl, normalizeTabelogUrl } from "../lib/tabelogUrl.js";
 
 /**
  * ピンの入力・表示パネル．
@@ -19,7 +20,7 @@ import CommentEditor from "./CommentEditor.jsx";
  *   saving     保存中かどうか
  *   error      保存に失敗したときの文言
  *   mapOptions ボタン種類の移動先として選べるマップの一覧．[{ id, title }]（#67）
- *   onSave     { title, content, pinType, kind, linkMapId } を受け取って保存する．新規作成のときだけ使う
+ *   onSave     { title, content, pinType, kind, linkMapId, tabelogUrl } を受け取って保存する．新規作成のときだけ使う
  *   onClose    閉じる
  *
  * id があるかどうかで «表示» と «新規作成» を切り替える．
@@ -69,6 +70,10 @@ export function PinPanel({
   const [kind, setKind] = useState("pin");
   const [linkMapId, setLinkMapId] = useState("");
   const [showOnlyMyMaps, setShowOnlyMyMaps] = useState(false);
+  // 食べログの店舗ページ URL（任意，#5）
+  const [tabelogUrl, setTabelogUrl] = useState("");
+  const normalizedTabelogUrl = normalizeTabelogUrl(tabelogUrl);
+  const tabelogUrlInvalid = normalizedTabelogUrl !== null && !isTabelogUrl(normalizedTabelogUrl);
 
   // コメント機能用のState
   const [comments, setComments] = useState([]);
@@ -116,6 +121,7 @@ export function PinPanel({
     setContent(pin?.content ?? "");
     setKind(pin?.kind ?? "pin");
     setLinkMapId(pin?.link_map_id ?? "");
+    setTabelogUrl(pin?.tabelog_url ?? "");
     // 既存4種類に含まれない場合は自由入力として扱う
     const isCustomPinType =
       pin?.pin_type &&
@@ -132,6 +138,7 @@ export function PinPanel({
     pin?.pin_type,
     pin?.kind,
     pin?.link_map_id,
+    pin?.tabelog_url,
   ]);
 
   useEffect(() => {
@@ -329,6 +336,8 @@ export function PinPanel({
     if (kind !== "button" && pinType === "custom" && !customPinType.trim()) {
       return;
     }
+    // 食べログ URL は任意だが，入力した場合は食べログのページだけを受け付ける
+    if (kind !== "button" && tabelogUrlInvalid) return;
 
     // 自由入力の場合は，入力された文字をピンの種類として保存する
     const savedPinType =
@@ -340,6 +349,7 @@ export function PinPanel({
       pinType: savedPinType,
       kind,
       linkMapId: kind === "button" ? linkMapId : null,
+      tabelogUrl: kind === "button" ? null : normalizedTabelogUrl,
     };
 
     // isNewか否かで呼び出す関数（onSave or onUpdate）切り替える
@@ -355,6 +365,7 @@ export function PinPanel({
     setContent(pin?.content ?? "");
     setKind(pin?.kind ?? "pin");
     setLinkMapId(pin?.link_map_id ?? mapOptions[0]?.id ?? "");
+    setTabelogUrl(pin?.tabelog_url ?? "");
     setShowOnlyMyMaps(false);
 
     // 既存4種類に含まれない場合は自由入力として元に戻す
@@ -567,6 +578,34 @@ export function PinPanel({
                   className="mt-2 w-full rounded-xl border border-rose-100 bg-rose-50/30 px-3 py-2 text-sm outline-none focus:border-rose-300 focus:ring-4 focus:ring-rose-100 disabled:bg-stone-100"
                 />
 
+                {/* 食べログの店舗ページ URL（任意，#5） */}
+                <label className="mt-2 block">
+                  <span className="text-xs font-semibold text-[#817878]">🍴 食べログ URL（任意）</span>
+                  <input
+                    type="url"
+                    inputMode="url"
+                    value={tabelogUrl}
+                    onChange={(e) => setTabelogUrl(e.target.value)}
+                    disabled={saving}
+                    maxLength={TABELOG_URL_MAX_LENGTH}
+                    placeholder="https://tabelog.com/tokyo/A1313/A131303/13xxxxxx/"
+                    aria-invalid={tabelogUrlInvalid}
+                    aria-describedby="pin-tabelog-url-hint"
+                    className={`mt-1 w-full rounded-xl border bg-rose-50/30 px-3 py-2 text-sm outline-none focus:ring-4 disabled:bg-stone-100 ${tabelogUrlInvalid
+                      ? "border-red-400 focus:border-red-400 focus:ring-red-100"
+                      : "border-rose-100 focus:border-rose-300 focus:ring-rose-100"
+                      }`}
+                  />
+                </label>
+                <p
+                  id="pin-tabelog-url-hint"
+                  className={`mt-1 text-[11px] leading-relaxed ${tabelogUrlInvalid ? "text-red-600" : "text-[#9A908D]"}`}
+                >
+                  {tabelogUrlInvalid
+                    ? "食べログの店舗ページの URL（https://tabelog.com/ で始まるもの）を入れてください。"
+                    : "飲食店なら、食べログの店舗ページの URL を貼ると、ピンを開いたときにリンクから見られます。"}
+                </p>
+
                 <div className="mt-2 flex flex-wrap gap-1.5">
                   {PIN_TYPES.map((type) => (
                     <button
@@ -636,7 +675,8 @@ export function PinPanel({
                 (kind === "button" && !linkMapId) ||
                 (kind !== "button" &&
                   pinType === "custom" &&
-                  customPinType.trim() === "")
+                  customPinType.trim() === "") ||
+                (kind !== "button" && tabelogUrlInvalid)
               }
               className="mt-4 w-full rounded-full bg-[#F47281] px-4 py-2.5 text-sm font-bold text-white hover:bg-[#E95F70] disabled:bg-stone-300"
             >
@@ -710,6 +750,19 @@ export function PinPanel({
               </p>
             ) : (
               <p className="mt-2 text-sm text-slate-400">メモはありません．</p>
+            )}
+            {/* 食べログの店舗ページ（#5）．食べログ以外の URL は保存時にも弾くが，念のため表示前にも確かめる */}
+            {pin.kind !== "button" && isTabelogUrl(pin.tabelog_url) && (
+              <a
+                href={pin.tabelog_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-3 inline-flex items-center gap-1.5 rounded-full border border-[#F2DADD] bg-white px-3 py-1.5 text-xs font-semibold text-[#C95765] hover:bg-[#FFF0F1]"
+              >
+                🍴 食べログで見る
+                <span aria-hidden="true">↗</span>
+                <span className="sr-only">（新しいタブで開きます）</span>
+              </a>
             )}
             {/* エラーメッセージの表示 */}
             {error && (
