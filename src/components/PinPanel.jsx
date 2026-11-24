@@ -62,6 +62,7 @@ export function PinPanel({
   onEditCancel,
 }) {
   const isNew = !pin?.id;
+  const currentUserId = currentUser?.id;
 
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
@@ -174,15 +175,21 @@ export function PinPanel({
     }
 
     let ignore = false;
+    let controller;
 
-    async function loadComments() {
-      setLoadingComments(true);
+    async function loadComments(showLoading = true) {
+      controller?.abort();
+      controller = new AbortController();
+      const { signal } = controller;
+      if (showLoading) setLoadingComments(true);
       setCommentError("");
       const { data, error: fetchErr } = await supabase
         .from("pin_comments")
         .select("*")
         .eq("pin_id", pin.id)
-        .order("created_at", { ascending: true });
+        .order("created_at", { ascending: true })
+        .abortSignal(signal);
+      if (ignore || signal.aborted) return;
 
       let loadedComments = data ?? [];
       let loadError = fetchErr;
@@ -194,12 +201,13 @@ export function PinPanel({
           .select("*")
           .eq("pin_id", pin.id)
           .eq("id", focusedCommentId)
-          .maybeSingle();
+          .maybeSingle()
+          .abortSignal(signal);
         if (linkedComment) loadedComments = [...loadedComments, linkedComment];
         if (linkedCommentError && linkedCommentError.code !== "22P02") loadError = linkedCommentError;
       }
 
-      if (!ignore) {
+      if (!ignore && !signal.aborted) {
         if (loadError) {
           console.error("コメントの取得に失敗", loadError);
           setCommentError("コメントの読み込みに失敗しました．");
@@ -211,6 +219,22 @@ export function PinPanel({
     }
 
     loadComments();
+
+    // 未ログインの共有閲覧では、HTTPリクエストで共有キーを提示して更新を確認する。
+    // 変更通知の接続には共有キーを含められないため、表示中だけ定期的に取得する。
+    if (!currentUserId) {
+      const refreshComments = () => {
+        if (document.visibilityState === "visible") loadComments(false);
+      };
+      const interval = window.setInterval(refreshComments, 10000);
+      window.addEventListener("focus", refreshComments);
+      return () => {
+        ignore = true;
+        controller?.abort();
+        window.clearInterval(interval);
+        window.removeEventListener("focus", refreshComments);
+      };
+    }
 
     // 他の人が投稿・編集・削除したコメントを即座に反映する（Realtime）
     const channel = supabase
@@ -246,9 +270,10 @@ export function PinPanel({
 
     return () => {
       ignore = true;
+      controller?.abort();
       supabase.removeChannel(channel);
     };
-  }, [pin?.id, focusedCommentId]);
+  }, [pin?.id, focusedCommentId, currentUserId]);
 
   useEffect(() => {
     // 投稿先を開いたとき、長いコメント一覧でも対象が見える位置に移動する。
@@ -269,19 +294,24 @@ export function PinPanel({
     setCommentError("");
 
     try {
-      const { error: insertErr } = await supabase
+      const { data: createdComment, error: insertErr } = await supabase
         .from("pin_comments")
         .insert({
           pin_id: pin.id,
           user_id: currentUser.id,
           content: newComment.trim(),
           creator_username: getGithubUsername(currentUser),
-        });
+        })
+        .select()
+        .single();
 
       if (insertErr) {
         console.error("コメントの送信に失敗", insertErr);
         setCommentError("コメントの送信に失敗しました．");
       } else {
+        // 自分の投稿は変更通知を待たずに表示する。
+        setComments((previous) => previous.some((comment) => comment.id === createdComment.id)
+          ? previous : [...previous, createdComment]);
         setNewComment("");
       }
     } catch (err) {
@@ -331,7 +361,8 @@ export function PinPanel({
     event.preventDefault();
     if (saving) return;
     if (!title.trim()) return;
-    if (kind === "button" && !linkMapId) return;
+    // 非公開化などで候補から外れた既存の移動先も、そのまま保存させない。
+    if (kind === "button" && !selectedMapIsVisible) return;
     // 自由入力が空欄の場合は保存しない（kind が button のときは pinType 自体を使わない）
     if (kind !== "button" && pinType === "custom" && !customPinType.trim()) {
       return;
@@ -513,6 +544,9 @@ export function PinPanel({
 
             {kind === "button" ? (
               <>
+                <p className="mt-3 text-xs text-[#817878]">
+                  移動先には、閲覧できるURL限定公開マップだけを選べます。
+                </p>
                 <label className="mt-3 flex cursor-pointer items-center gap-2 text-xs text-[#685F5D]">
                   <input
                     type="checkbox"
@@ -550,13 +584,15 @@ export function PinPanel({
                   </p>
                 ) : (
                   <select
-                    value={linkMapId}
+                    value={selectedMapIsVisible ? linkMapId : ""}
                     onChange={(event) =>
                       setLinkMapId(event.target.value)
                     }
                     disabled={saving}
                     className={`mt-3 ${fieldClassName}`}
                   >
+                    {/* 保存済みの移動先が候補にない場合、別のマップを勝手に選ばせない。 */}
+                    <option value="" disabled>移動先のマップを選んでください</option>
                     {visibleMapOptions.map((option) => (
                       <option key={option.id} value={option.id}>
                         {option.hierarchyLabel}
@@ -672,7 +708,7 @@ export function PinPanel({
               disabled={
                 saving ||
                 title.trim() === "" ||
-                (kind === "button" && !linkMapId) ||
+                (kind === "button" && !selectedMapIsVisible) ||
                 (kind !== "button" &&
                   pinType === "custom" &&
                   customPinType.trim() === "") ||
@@ -690,9 +726,9 @@ export function PinPanel({
                 タイトルを入れると保存できます．
               </p>
             )}
-            {!saving && title.trim() !== "" && kind === "button" && !linkMapId && (
+            {!saving && title.trim() !== "" && kind === "button" && !selectedMapIsVisible && (
               <p className="mt-2 text-xs text-slate-500">
-                移動先のマップを選ぶと保存できます．
+                URL限定公開の移動先を選ぶと保存できます。
               </p>
             )}
           </form>
@@ -727,13 +763,15 @@ export function PinPanel({
                 <button
                   type="button"
                   onClick={() => onNavigate?.(pin.link_map_id)}
-                  className="mt-4 flex w-full items-center justify-center gap-2 rounded-2xl bg-[#7DCDB5] px-5 py-3.5 text-sm font-black text-white shadow-[0_7px_18px_rgba(125,205,181,0.35)] transition hover:-translate-y-0.5 hover:bg-[#65BDA3]"
+                  // 閲覧権限がない、非公開、削除済みの移動先にはボタンからも移動させない。
+                  disabled={!destinationMap}
+                  className="mt-4 flex w-full items-center justify-center gap-2 rounded-2xl bg-[#7DCDB5] px-5 py-3.5 text-sm font-black text-white shadow-[0_7px_18px_rgba(125,205,181,0.35)] transition hover:-translate-y-0.5 hover:bg-[#65BDA3] disabled:opacity-50"
                 >
                   <span aria-hidden="true">🚪</span>
                   <span>
                     {destinationMap
                       ? `${destinationMap.title}へ移動`
-                      : "移動先のマップへ"}
+                      : "移動先を利用できません"}
                   </span>
                   <span aria-hidden="true">→</span>
                 </button>

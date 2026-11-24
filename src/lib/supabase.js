@@ -1,4 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
+import { addMapShareHeaders } from "./mapShareAccess.js";
 
 /**
  * Supabase への接続設定．
@@ -29,4 +30,9 @@ if (!url || !key) {
   );
 }
 
-export const supabase = createClient(url, key);
+export const supabase = createClient(url, key, {
+  global: {
+    // RLS が共有リンクの対象を確認できるようにする。ログインの認証情報は SDK に任せる。
+    fetch: (input, init) => fetch(input, addMapShareHeaders(input, init, url)),
+  },
+});

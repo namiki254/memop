@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import { canManageContent } from "../lib/mapAccess";
+import { getCurrentMapShare } from "../lib/mapShareAccess";
+import { getMapShareUrl } from "../lib/mapShareLinks";
 import Loading from "../components/Loading";
 import ErrorMessage from "../components/ErrorMessage";
 import { MapView } from "../components/MapView";
@@ -27,6 +29,7 @@ const MAP_BUTTON_FILTER = "kind:button";
  */
 
 export default function MapDetail({ currentUser, isAdmin }) {
+  const currentUserId = currentUser?.id;
   // /maps/:id の :id を取得する
   const { id } = useParams();
   const navigate = useNavigate();
@@ -47,6 +50,8 @@ export default function MapDetail({ currentUser, isAdmin }) {
   // 既存のピンを見ているときは pins の1件，新しく作るときは { x, y } だけの仮の値．
   // null のときはパネルを出さない．
   const [selectedPin, setSelectedPin] = useState(null);
+  const selectedPinRef = useRef(null);
+  selectedPinRef.current = selectedPin;
   const requestedPinMissing = requestedPinId && !pins.some((pin) => String(pin.id) === requestedPinId);
 
   const [pendingPinAppearance, setPendingPinAppearance] = useState({
@@ -360,6 +365,16 @@ export default function MapDetail({ currentUser, isAdmin }) {
     loadMapDetail();
   }, [loadMapDetail]);
 
+  useEffect(() => {
+    const share = getCurrentMapShare(id);
+    if (!currentUser || !map?.is_public || !share) return;
+    // ログインして受け取ったリンクは、保存済み一覧や別のタブからも同じユーザーが開ける。
+    supabase.rpc("accept_map_share_link", { target_map_id: id, share_token: share.token })
+      .then(({ error }) => {
+        if (error) console.error("共有リンクの利用権限を保存できませんでした。", error.code);
+      });
+  }, [id, currentUser, map?.is_public]);
+
   // パネルが閉じたら（他の人の削除で自動的に閉じた場合も含む），
   // 編集モード・エラー表示を残さないようにする．
   useEffect(() => {
@@ -422,6 +437,8 @@ export default function MapDetail({ currentUser, isAdmin }) {
         supabase
           .from("maps")
           .select("id, title, folder_id, user_id")
+          // 管理者にも非公開マップを移動先候補として返さない。
+          .eq("is_public", true)
           .order("title"),
 
         foldersQuery,
@@ -488,6 +505,39 @@ export default function MapDetail({ currentUser, isAdmin }) {
   // Supabase側で pins テーブルの変更配信（Replication）を有効にしておかないと，
   // ここは何も受け取れない（#39のヒント参照）．
   useEffect(() => {
+    if (!currentUserId) {
+      let controller;
+      async function refreshSharedPins() {
+        if (document.visibilityState !== "visible") return;
+        controller?.abort();
+        controller = new AbortController();
+        const { signal } = controller;
+        const selectedId = selectedPinRef.current?.id;
+        const { data, error } = await supabase.from("pins").select("*")
+          .eq("map_id", id).order("created_at", { ascending: true }).abortSignal(signal);
+        if (error || signal.aborted) return;
+        const updatedPins = data ?? [];
+        // 取得上限より後ろのピンを表示中でも、そのピンを個別に確認する。
+        if (selectedId && !updatedPins.some((pin) => pin.id === selectedId)) {
+          const { data: linkedPin, error: linkedError } = await supabase.from("pins").select("*")
+            .eq("map_id", id).eq("id", selectedId).maybeSingle().abortSignal(signal);
+          if (linkedError || signal.aborted) return;
+          if (linkedPin) updatedPins.push(linkedPin);
+        }
+        setPins(updatedPins);
+        setSelectedPin((current) => current?.id === selectedId
+          ? updatedPins.find((pin) => pin.id === selectedId) ?? null : current);
+      }
+      // 匿名の共有閲覧は、共有キー付きのHTTP取得で変更を反映する。
+      const interval = window.setInterval(refreshSharedPins, 10000);
+      window.addEventListener("focus", refreshSharedPins);
+      return () => {
+        controller?.abort();
+        window.clearInterval(interval);
+        window.removeEventListener("focus", refreshSharedPins);
+      };
+    }
+
     const channel = supabase
       .channel(`pins-of-map-${id}`)
       .on(
@@ -532,7 +582,7 @@ export default function MapDetail({ currentUser, isAdmin }) {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [id]);
+  }, [id, currentUserId]);
 
   /** 画像の何もない場所がクリックされた．そこに新しいピンを作る準備をする */
   async function handleMapClick(x, y) {
@@ -565,27 +615,34 @@ export default function MapDetail({ currentUser, isAdmin }) {
     await handleNavigateToMap(pin.link_map_id);
   }
 
-  /** パネルの移動ボタンから移動する */
-  async function handleNavigateToMap(linkMapId) {
-    setPinError("");
-
+  async function validateMapDestination(linkMapId) {
     if (!linkMapId) {
       setPinError("移動先のマップが設定されていません．");
-      return;
+      return false;
     }
 
+    // 候補表示後に非公開へ変わる場合もあるため、保存・移動の直前に公開範囲を確認する。
+    // 管理者として閲覧できても、非公開マップをボタンの移動先には使わせない。
     const { data: targetMap, error: targetMapError } = await supabase
       .from("maps")
       .select("id")
       .eq("id", linkMapId)
+      .eq("is_public", true)
       .maybeSingle();
 
     if (targetMapError || !targetMap) {
       setPinError(
-        "移動先のマップが存在しないか、非公開に変更されたため移動できません．",
+        "移動先には、閲覧できるURL限定公開マップを選んでください。",
       );
-      return;
+      return false;
     }
+    return true;
+  }
+
+  /** パネルの移動ボタンから移動する */
+  async function handleNavigateToMap(linkMapId) {
+    setPinError("");
+    if (!await validateMapDestination(linkMapId)) return;
 
     // window.open は非同期処理（Supabase問い合わせ）の後に呼ぶと，
     // ユーザー操作起因のポップアップと認識されずブラウザにブロックされる
@@ -613,9 +670,15 @@ export default function MapDetail({ currentUser, isAdmin }) {
   // コピー処理を追加
   // utrをクリップボードにコピー、2秒経ったらもとに戻す（Issueのコード通り）
   async function copyUrl() {
-    await navigator.clipboard.writeText(window.location.href);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    try {
+      const url = await getMapShareUrl(id, map.is_public, canEditMap);
+      await navigator.clipboard.writeText(url);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (copyError) {
+      console.error("共有リンクのコピーに失敗", copyError);
+      setMapError("共有リンクをコピーできませんでした。");
+    }
   }
 
   function startEditingMap() {
@@ -741,6 +804,8 @@ export default function MapDetail({ currentUser, isAdmin }) {
         setPinError("ピンを作成するにはログインしてください．");
         return;
       }
+      // 新規ボタンも、最新の公開範囲を確かめてから保存する。
+      if (kind === "button" && !await validateMapDestination(linkMapId)) return;
       const { data: created, error: insertError } = await supabase
         .from("pins")
         .insert({
@@ -808,6 +873,8 @@ export default function MapDetail({ currentUser, isAdmin }) {
         return;
       }
 
+      // 既存ボタンの移動先が非公開なら、URL限定公開マップへの変更を求める。
+      if (kind === "button" && !await validateMapDestination(linkMapId)) return;
       const { data: updated, error: updateError } = await supabase
         .from("pins")
         .update({
@@ -913,7 +980,17 @@ export default function MapDetail({ currentUser, isAdmin }) {
   if (!map) {
     return (
       <div className="grid h-full place-items-center p-8 text-slate-600">
-        <p className="text-lg font-semibold">マップが見つかりません</p>
+        <div className="max-w-md space-y-3 text-center">
+          <p className="text-lg font-semibold">マップが見つかりません</p>
+          {/* 未ログインで旧形式の URL を開いた人にも、共有 URL の受け取り方を案内する。
+              この時点では存在・公開範囲を判定できないため、特定マップの存在は伝えない。 */}
+          {!currentUser && !getCurrentMapShare(id) && (
+            <p className="text-sm leading-relaxed">
+              作成者から共有URLを受け取ってください。共有URLは、マップの「URLをコピー」から取得できます。
+              共有URLがあれば、ログインせずに閲覧できます。
+            </p>
+          )}
+        </div>
       </div>
     );
   }

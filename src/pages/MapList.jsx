@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import { canManageContent } from "../lib/mapAccess";
+import { getMapShareUrl } from "../lib/mapShareLinks";
 import { useMapImage } from "../lib/mapImages";
 import Loading from "../components/Loading";
 import ErrorMessage from "../components/ErrorMessage";
@@ -87,12 +88,12 @@ export default function MapList({ currentUser, authChecked, isAdmin }) {
 
   async function copyItemUrl(type, id) {
     const menuKey = `${type}-${id}`;
-    const path = type === "map" ? `/maps/${id}` : `/folders/${id}`;
-
     try {
-      await navigator.clipboard.writeText(
-        new URL(path, window.location.origin).href,
-      );
+      const map = maps.find((entry) => entry.id === id);
+      const url = type === "map"
+        ? await getMapShareUrl(id, map?.is_public, canManageContent(map, currentUser?.id, isAdmin))
+        : new URL(`/folders/${id}`, window.location.origin).href;
+      await navigator.clipboard.writeText(url);
 
       setCopiedMenu(menuKey);
 
