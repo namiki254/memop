@@ -75,7 +75,7 @@ export default function ThreeDotMenu({
         <div
           role="menu"
           aria-label={label}
-          className="absolute right-0 top-11 z-50 min-w-44 rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl"
+          className="absolute right-0 top-11 z-50 w-max min-w-44 rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl"
         >
           {children}
         </div>
@@ -100,7 +100,7 @@ export function MenuItem({
         event.stopPropagation();
         onClick();
       }}
-      className={`w-full rounded-lg px-3 py-2.5 text-left text-sm font-medium transition disabled:opacity-50 ${
+      className={`w-full whitespace-nowrap rounded-lg px-3 py-2.5 text-left text-sm font-medium transition disabled:opacity-50 ${
         danger
           ? "text-red-600 hover:bg-red-50"
           : "text-slate-700 hover:bg-rose-50"

@@ -24,6 +24,7 @@ dist-ssr
 *.sw?
 
 .vercel
+supabase/.temp/
 .env*
 # .env.example は雛形なのでコミットする（Vercel CLI が .env* を足したときの例外）
 !.env.example

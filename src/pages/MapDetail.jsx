@@ -1,3 +1,6 @@
+import MapVisibilitySelect from "../components/MapVisibilitySelect.jsx";
+import { getMapVisibility, getMapVisibilityLabel, mapVisibilityValues } from "../lib/mapVisibility.js";
+import { subscribeSavedMapsChanged } from "../lib/savedMaps.js";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { supabase } from "../lib/supabase";
@@ -80,6 +83,7 @@ export default function MapDetail({ currentUser, isAdmin }) {
   const [mapOptionFolders, setMapOptionFolders] = useState([]);
   const [isPinListOpen, setIsPinListOpen] = useState(false);
   const canEditMap = canManageContent(map, currentUser?.id, isAdmin);
+  const currentVisibility = getMapVisibility(map);
 
   function handlePinListClick(pin) {
     setPinError("");
@@ -92,7 +96,7 @@ export default function MapDetail({ currentUser, isAdmin }) {
   const [isEditingMap, setIsEditingMap] = useState(false);
   const [mapTitle, setMapTitle] = useState("");
   const [mapDescription, setMapDescription] = useState("");
-  const [mapIsPublic, setMapIsPublic] = useState(true); // 追加
+  const [mapVisibility, setMapVisibility] = useState("public");
   const [savingMap, setSavingMap] = useState(false);
   const [mapError, setMapError] = useState("");
 
@@ -352,7 +356,7 @@ export default function MapDetail({ currentUser, isAdmin }) {
       setMap(mapData);
       setMapTitle(mapData.title);
       setMapDescription(mapData.description ?? "");
-      setMapIsPublic(mapData.is_public ?? true); // 追加
+      setMapVisibility(getMapVisibility(mapData));
       setPins(mapPins);
     } catch (fetchError) {
       setError(fetchError);
@@ -367,13 +371,13 @@ export default function MapDetail({ currentUser, isAdmin }) {
 
   useEffect(() => {
     const share = getCurrentMapShare(id);
-    if (!currentUser || !map?.is_public || !share) return;
+    if (!currentUser || currentVisibility !== "unlisted" || !share) return;
     // ログインして受け取ったリンクは、保存済み一覧や別のタブからも同じユーザーが開ける。
     supabase.rpc("accept_map_share_link", { target_map_id: id, share_token: share.token })
       .then(({ error }) => {
         if (error) console.error("共有リンクの利用権限を保存できませんでした。", error.code);
       });
-  }, [id, currentUser, map?.is_public]);
+  }, [id, currentUser, currentVisibility]);
 
   // パネルが閉じたら（他の人の削除で自動的に閉じた場合も含む），
   // 編集モード・エラー表示を残さないようにする．
@@ -398,7 +402,7 @@ export default function MapDetail({ currentUser, isAdmin }) {
     async function loadSiblings() {
       const { data, error: siblingsError } = await supabase
         .from("maps")
-        .select("id, title, is_public, user_id")   // is_public, user_idも取得
+        .select("id, title, is_public, visibility, user_id")   // is_public, user_idも取得
         .eq("folder_id", map.folder_id)
         .order("created_at", { ascending: true });
 
@@ -413,92 +417,83 @@ export default function MapDetail({ currentUser, isAdmin }) {
     };
   }, [map?.folder_id]);
 
-  // ボタンの移動先ピッカーに使う，全マップの一覧．最初に1回だけ取る．
+  const linkedMapIdsKey = [...new Set(pins.map((pin) => pin.link_map_id).filter(Boolean))].sort().join(",");
   useEffect(() => {
+    let cancelled = false;
+    let version = 0;
     async function loadMapOptions() {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-
-      // フォルダ名は，自分の・持ち主なし・保存済みのものだけに絞る．
-      // 全ユーザーの全フォルダを無条件に取得すると，移動先マップのパンくず
-      // ラベル（「ホーム / フォルダ名 / マップ名」）に，自分が一度も見たことの
-      // ない他人のフォルダ名まで出てしまうため．
-      let foldersQuery = supabase
-        .from("folders")
-        .select("id, name, parent_folder_id, user_id")
-        .order("name");
-
-      foldersQuery = user
-        ? foldersQuery.or(`user_id.eq.${user.id},user_id.is.null`)
-        : foldersQuery.is("user_id", null);
-
-      const [mapsResult, foldersResult] = await Promise.all([
-        supabase
-          .from("maps")
-          .select("id, title, folder_id, user_id")
-          // 管理者にも非公開マップを移動先候補として返さない。
-          .eq("is_public", true)
-          .order("title"),
-
-        foldersQuery,
-      ]);
-
-      if (mapsResult.error) {
-        console.error(
-          "移動先マップの取得に失敗",
-          mapsResult.error,
-        );
-        return;
-      }
-
-      if (foldersResult.error) {
-        console.error(
-          "フォルダの取得に失敗",
-          foldersResult.error,
-        );
-        return;
-      }
-
-      let savedFolders = [];
-
-      if (user) {
-        const { data: savedFolderRows, error: savedFoldersError } =
-          await supabase
-            .from("saved_folders")
-            .select("folder_id")
-            .eq("user_id", user.id);
-
-        if (!savedFoldersError) {
-          const savedFolderIds = (savedFolderRows ?? []).map(
-            (row) => row.folder_id,
-          );
-
-          if (savedFolderIds.length > 0) {
-            const { data: savedFolderData, error: savedFolderDataError } =
-              await supabase
-                .from("folders")
-                .select("id, name, parent_folder_id, user_id")
-                .in("id", savedFolderIds);
-
-            if (!savedFolderDataError) {
-              savedFolders = savedFolderData ?? [];
-            }
+      const currentVersion = ++version;
+      try {
+        const savedIds = [];
+        if (currentUserId) {
+          for (let start = 0; ; start += 500) {
+            const { data, error } = await supabase.from("saved_maps").select("map_id")
+              .eq("user_id", currentUserId).order("map_id").range(start, start + 499);
+            if (cancelled || currentVersion !== version) return;
+            if (error) throw error;
+            savedIds.push(...(data ?? []).map((row) => row.map_id));
+            if (!data || data.length < 500) break;
           }
         }
+        const saved = new Set(savedIds);
+        const ids = [...new Set([...savedIds, ...linkedMapIdsKey.split(",").filter(Boolean)])];
+        const availableMaps = [];
+        // 既存ボタンの移動可否と、新規作成で選べる候補は別に管理する。
+        if (currentUserId || ids.length) {
+          for (let start = 0; ; start += 500) {
+            let query = supabase.from("maps").select("id, title, folder_id, user_id").eq("is_public", true)
+              .order("id").range(start, start + 499);
+            if (currentUserId) {
+              query = ids.length ? query.or(`user_id.eq.${currentUserId},id.in.(${ids.join(",")})`)
+                : query.eq("user_id", currentUserId);
+            } else query = query.in("id", ids);
+            const { data, error } = await query;
+            if (cancelled || currentVersion !== version) return;
+            if (error) throw error;
+            availableMaps.push(...(data ?? []));
+            if (!data || data.length < 500) break;
+          }
+        }
+        if (cancelled || currentVersion !== version) return;
+        setAllMaps(availableMaps.map((target) => ({ ...target,
+          is_destination_option: Boolean(currentUserId && (target.user_id === currentUserId || saved.has(target.id))),
+        })));
+        // パンくずは自分のフォルダだけ。公開マップから他人のフォルダ名は取得しない。
+        if (currentUserId) {
+          const { data, error } = await supabase.from("folders").select("id, name, parent_folder_id, user_id")
+            .eq("user_id", currentUserId);
+          if (!cancelled && currentVersion === version) setMapOptionFolders(error ? [] : data ?? []);
+        } else setMapOptionFolders([]);
+      } catch (error) {
+        if (!cancelled && currentVersion === version) { setAllMaps([]); console.error("移動先マップの取得に失敗", error); }
       }
-
-      const mergedFolders = [...(foldersResult.data ?? []), ...savedFolders];
-      const uniqueFolders = Array.from(
-        new Map(mergedFolders.map((f) => [f.id, f])).values(),
-      );
-
-      setAllMaps(mapsResult.data ?? []);
-      setMapOptionFolders(uniqueFolders);
     }
-
     loadMapOptions();
-  }, []);
+    function refresh() { if (document.visibilityState === "visible") loadMapOptions(); }
+    const unsubscribe = subscribeSavedMapsChanged(refresh);
+    window.addEventListener("focus", refresh);
+    const interval = window.setInterval(refresh, 15000);
+    return () => { cancelled = true; unsubscribe(); window.removeEventListener("focus", refresh); window.clearInterval(interval); };
+  }, [currentUserId, linkedMapIdsKey, id]);
+
+  // 公開範囲が別の画面から変わった場合、開いている内容も取り下げる。
+  useEffect(() => {
+    let cancelled = false;
+    let checking = false;
+    async function refreshAccess() {
+      if (checking || document.visibilityState !== "visible") return;
+      checking = true;
+      try {
+        const { data, error } = await supabase.from("maps").select("*").eq("id", id).maybeSingle();
+        if (cancelled || error) return;
+        setMap(data);
+        if (!data) { setPins([]); setSelectedPin(null); setBreadcrumb([]); setAllMaps([]); setIsEditingMap(false); }
+      } finally { checking = false; }
+    }
+    const interval = window.setInterval(refreshAccess, 10000);
+    window.addEventListener("focus", refreshAccess);
+    return () => { cancelled = true; window.clearInterval(interval); window.removeEventListener("focus", refreshAccess); };
+  }, [id, currentUserId]);
 
   // 他の人が置いた・書き直した・消したピンを，リロードなしで反映する．
   //
@@ -615,26 +610,15 @@ export default function MapDetail({ currentUser, isAdmin }) {
     await handleNavigateToMap(pin.link_map_id);
   }
 
-  async function validateMapDestination(linkMapId) {
-    if (!linkMapId) {
-      setPinError("移動先のマップが設定されていません．");
-      return false;
-    }
-
-    // 候補表示後に非公開へ変わる場合もあるため、保存・移動の直前に公開範囲を確認する。
-    // 管理者として閲覧できても、非公開マップをボタンの移動先には使わせない。
-    const { data: targetMap, error: targetMapError } = await supabase
-      .from("maps")
-      .select("id")
-      .eq("id", linkMapId)
-      .eq("is_public", true)
-      .maybeSingle();
-
-    if (targetMapError || !targetMap) {
-      setPinError(
-        "移動先には、閲覧できるURL限定公開マップを選んでください。",
-      );
-      return false;
+  async function validateMapDestination(linkMapId, requireCandidate = false) {
+    if (!linkMapId) { setPinError("移動先のマップを選んでください。"); return false; }
+    const { data: target, error } = await supabase.from("maps").select("id, user_id")
+      .eq("id", linkMapId).eq("is_public", true).maybeSingle();
+    if (error || !target) { setPinError("移動先は存在しないか、公開範囲・閲覧権限が変更されたため利用できません。"); return false; }
+    if (requireCandidate && target.user_id !== currentUserId) {
+      const { data: saved, error: saveError } = await supabase.from("saved_maps").select("map_id")
+        .eq("user_id", currentUserId).eq("map_id", linkMapId).maybeSingle();
+      if (saveError || !saved) { setPinError("移動先には自分が作成したマップか、保存済みのマップを選んでください。"); return false; }
     }
     return true;
   }
@@ -671,7 +655,7 @@ export default function MapDetail({ currentUser, isAdmin }) {
   // utrをクリップボードにコピー、2秒経ったらもとに戻す（Issueのコード通り）
   async function copyUrl() {
     try {
-      const url = await getMapShareUrl(id, map.is_public, canEditMap);
+      const url = await getMapShareUrl(id, map, canEditMap);
       await navigator.clipboard.writeText(url);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
@@ -682,6 +666,9 @@ export default function MapDetail({ currentUser, isAdmin }) {
   }
 
   function startEditingMap() {
+    setMapTitle(map.title);
+    setMapDescription(map.description ?? "");
+    setMapVisibility(getMapVisibility(map));
     setMapError("");
     setIsEditingMap(true);
   }
@@ -689,7 +676,7 @@ export default function MapDetail({ currentUser, isAdmin }) {
   function cancelEditingMap() {
     setMapTitle(map.title);
     setMapDescription(map.description ?? "");
-    setMapIsPublic(map.is_public ?? true); // 追加
+    setMapVisibility(getMapVisibility(map));
     setMapError("");
     setIsEditingMap(false);
   }
@@ -714,7 +701,7 @@ export default function MapDetail({ currentUser, isAdmin }) {
         .update({
           title: trimmedTitle,
           description: mapDescription.trim(),
-          is_public: mapIsPublic,   // 追加
+          ...mapVisibilityValues(mapVisibility),
         })
         .eq("id", id)
         .select()
@@ -804,8 +791,7 @@ export default function MapDetail({ currentUser, isAdmin }) {
         setPinError("ピンを作成するにはログインしてください．");
         return;
       }
-      // 新規ボタンも、最新の公開範囲を確かめてから保存する。
-      if (kind === "button" && !await validateMapDestination(linkMapId)) return;
+      if (kind === "button" && !await validateMapDestination(linkMapId, true)) return;
       const { data: created, error: insertError } = await supabase
         .from("pins")
         .insert({
@@ -873,8 +859,7 @@ export default function MapDetail({ currentUser, isAdmin }) {
         return;
       }
 
-      // 既存ボタンの移動先が非公開なら、URL限定公開マップへの変更を求める。
-      if (kind === "button" && !await validateMapDestination(linkMapId)) return;
+      if (kind === "button" && !await validateMapDestination(linkMapId, true)) return;
       const { data: updated, error: updateError } = await supabase
         .from("pins")
         .update({
@@ -982,14 +967,7 @@ export default function MapDetail({ currentUser, isAdmin }) {
       <div className="grid h-full place-items-center p-8 text-slate-600">
         <div className="max-w-md space-y-3 text-center">
           <p className="text-lg font-semibold">マップが見つかりません</p>
-          {/* 未ログインで旧形式の URL を開いた人にも、共有 URL の受け取り方を案内する。
-              この時点では存在・公開範囲を判定できないため、特定マップの存在は伝えない。 */}
-          {!currentUser && !getCurrentMapShare(id) && (
-            <p className="text-sm leading-relaxed">
-              作成者から共有URLを受け取ってください。共有URLは、マップの「URLをコピー」から取得できます。
-              共有URLがあれば、ログインせずに閲覧できます。
-            </p>
-          )}
+          {!currentUser && !getCurrentMapShare(id) && <p className="text-sm leading-relaxed">URL限定公開の場合は作成者から共有URLを受け取ってください。共有URLがあれば、ログインせずに閲覧できます。</p>}
         </div>
       </div>
     );
@@ -1028,7 +1006,7 @@ export default function MapDetail({ currentUser, isAdmin }) {
   }
 
   const destinationMapOptions = allMaps
-    .filter((targetMap) => targetMap.id !== id)
+    .filter((targetMap) => targetMap.id !== id && targetMap.is_destination_option)
     .map((targetMap) => ({
       ...targetMap,
       hierarchyLabel: createMapOptionLabel(targetMap),
@@ -1091,20 +1069,7 @@ export default function MapDetail({ currentUser, isAdmin }) {
                 className="mt-2 w-full rounded border border-slate-300 px-3 py-2 text-sm disabled:bg-slate-100"
               />
 
-              {/* 公開/非公開の切替 */}
-              <div className="mt-3 flex items-center gap-2">
-                <input
-                  id="editIsPublic"
-                  type="checkbox"
-                  checked={mapIsPublic}
-                  onChange={(e) => setMapIsPublic(e.target.checked)}
-                  disabled={savingMap}
-                  className="h-4 w-4 rounded border-slate-300 text-slate-800 focus:ring-slate-500"
-                />
-                <label htmlFor="editIsPublic" className="text-xs font-medium text-slate-700 cursor-pointer">
-                  このマップを公開する（{mapIsPublic ? "URLを知っている人は誰でも閲覧可" : "自分のみ閲覧可"}）
-                </label>
-              </div>
+              <MapVisibilitySelect id="editMapVisibility" value={mapVisibility} onChange={setMapVisibility} disabled={savingMap} />
 
               {mapError && (
                 <p className="mt-2 rounded bg-red-50 p-2 text-sm text-red-700">
@@ -1139,14 +1104,14 @@ export default function MapDetail({ currentUser, isAdmin }) {
                     {map.title}
                   </h2>
 
-                  {/* 公開/非公開バッジ */}
+                  {/* 公開範囲バッジ */}
                   <span
                     className={`shrink-0 rounded px-2 py-0.5 text-xs font-medium ${map.is_public
                       ? "bg-slate-100 text-slate-700"
                       : "bg-amber-100 text-amber-800"
                       }`}
                   >
-                    {map.is_public ? "公開" : "非公開"}
+                    {getMapVisibilityLabel(map)}
                   </span>
                 </div>
 
@@ -1170,9 +1135,9 @@ export default function MapDetail({ currentUser, isAdmin }) {
                     onToggle={() => setMapMenuOpen((current) => !current)}
                     onClose={() => setMapMenuOpen(false)}
                   >
-                    <MenuItem onClick={copyUrl}>
-                      {copied ? "✓ コピーしました" : "🔗 URLをコピー"}
-                    </MenuItem>
+                    {currentVisibility !== "private" && <MenuItem onClick={copyUrl}>
+                      {copied ? "✓ コピーしました" : "🔗 共有URLをコピー"}
+                    </MenuItem>}
 
                     {canEditMap && (
                       <MenuItem
@@ -1432,6 +1397,7 @@ export default function MapDetail({ currentUser, isAdmin }) {
             saving={savingPin}
             error={pinError}
             mapOptions={destinationMapOptions}
+            readableMaps={allMaps}
             onSave={handleSavePin}
             onClose={closePanel}
             onNavigate={handleNavigateToMap}
@@ -1503,7 +1469,7 @@ export default function MapDetail({ currentUser, isAdmin }) {
                     >
                       <span className="truncate">{sibling.title}</span>
 
-                      {/* 公開/非公開バッジ */}
+                      {/* 公開範囲バッジ */}
                       <span
                         className={`shrink-0 rounded px-1 py-0.5 text-[10px] font-medium ${isActive
                           ? sibling.is_public
@@ -1514,7 +1480,7 @@ export default function MapDetail({ currentUser, isAdmin }) {
                             : "bg-amber-100 text-amber-800"
                           }`}
                       >
-                        {sibling.is_public ? "公開" : "非公開"}
+                        {getMapVisibilityLabel(sibling)}
                       </span>
                     </Link>
                   </li>

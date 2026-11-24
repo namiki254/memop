@@ -1,3 +1,4 @@
+import { getMapVisibilityLabel } from "../lib/mapVisibility.js";
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { supabase } from "../lib/supabase.js";
@@ -20,7 +21,7 @@ export default function AdminMaps({ isAdmin, roleChecked }) {
       const { data, error } = await supabase
         .from("maps")
         // 作成者IDをユーザー管理へのリンクに使う。
-        .select("id, title, is_public, user_id")
+        .select("id, title, is_public, visibility, user_id")
         .order("created_at", { ascending: false })
         .order("id")
         .range(start, start + PAGE_SIZE)
@@ -60,7 +61,7 @@ export default function AdminMaps({ isAdmin, roleChecked }) {
                   className="flex items-center justify-between gap-3 px-4 py-3 hover:bg-rose-50"
                 >
                   <span className="min-w-0 break-words font-medium text-slate-800">{map.title}</span>
-                  <span className="shrink-0 text-xs text-slate-600">{map.is_public ? "公開" : "非公開"}</span>
+                  <span className="shrink-0 text-xs text-slate-600">{getMapVisibilityLabel(map)}</span>
                 </Link>
                 <p className="break-all px-4 pb-3 text-xs text-slate-500">
                   作成者　{map.user_id ? (

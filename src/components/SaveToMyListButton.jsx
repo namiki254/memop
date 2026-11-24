@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import { supabase } from "../lib/supabase";
+import { notifySavedMapsChanged, subscribeSavedMapsChanged } from "../lib/savedMaps.js";
+import { MenuItem } from "./ThreeDotMenu.jsx";
 
 const SAVE_TARGETS = {
     map: {
@@ -17,14 +19,20 @@ export default function SaveToMyListButton({
     itemId,
     ownerId,
     currentUser,
+    onSavedChange,
+    variant = "button",
+    hideWhenSaved = false,
 }) {
     const [saved, setSaved] = useState(false);
     const [checkingSaved, setCheckingSaved] = useState(false);
     const [saving, setSaving] = useState(false);
     const [saveError, setSaveError] = useState("");
+    const [saveVersion, setSaveVersion] = useState(0);
 
     const target = SAVE_TARGETS[itemType];
     const isOwner = currentUser?.id === ownerId;
+
+    useEffect(() => subscribeSavedMapsChanged(() => setSaveVersion((version) => version + 1)), []);
 
     useEffect(() => {
         let cancelled = false;
@@ -83,12 +91,11 @@ export default function SaveToMyListButton({
         return () => {
             cancelled = true;
         };
-    }, [currentUser, isOwner, itemId, target]);
+    }, [currentUser, isOwner, itemId, target, saveVersion]);
 
     async function handleSave() {
         if (
             saving ||
-            saved ||
             checkingSaved ||
             !target ||
             !itemId
@@ -114,9 +121,12 @@ export default function SaveToMyListButton({
                 [target.idColumn]: itemId,
             };
 
-            const { error } = await supabase
-                .from(target.table)
-                .upsert(values, {
+            const removing = saved && itemType === "map";
+            if (saved && !removing) return;
+            const { error } = removing
+                ? await supabase.from(target.table).delete()
+                    .eq("user_id", currentUser.id).eq(target.idColumn, itemId)
+                : await supabase.from(target.table).upsert(values, {
                     onConflict: `user_id,${target.idColumn}`,
                     ignoreDuplicates: true,
                 });
@@ -127,7 +137,9 @@ export default function SaveToMyListButton({
                 return;
             }
 
-            setSaved(true);
+            setSaved(!removing);
+            if (itemType === "map") notifySavedMapsChanged(itemId, !removing);
+            onSavedChange?.(!removing);
         } catch (unexpectedError) {
             console.error(
                 "保存中に予期しないエラー",
@@ -145,31 +157,37 @@ export default function SaveToMyListButton({
     if (!target || !itemId || isOwner) {
         return null;
     }
+    if (variant === "menu" && (checkingSaved || !saved || itemType !== "map")) return null;
+    if (hideWhenSaved && saved && itemType === "map") return null;
 
     let buttonLabel = "自分のマップ一覧に保存";
 
     if (checkingSaved) {
         buttonLabel = "確認中...";
     } else if (saving) {
-        buttonLabel = "保存中...";
+        buttonLabel = saved && itemType === "map" ? "解除中..." : "保存中...";
     } else if (saved) {
-        buttonLabel = "保存済み";
+        buttonLabel = itemType === "map" ? "保存解除" : "保存済み";
     }
 
     return (
-        <div className="relative flex items-center">
-            <button
+        <div className={variant === "menu" ? "relative w-full" : "relative flex items-center"}>
+            {variant === "menu" ? (
+                <MenuItem onClick={handleSave} disabled={saving}>
+                    {buttonLabel}
+                </MenuItem>
+            ) : <button
                 type="button"
                 onClick={handleSave}
-                disabled={checkingSaved || saving || saved}
+                disabled={checkingSaved || saving || (saved && itemType !== "map")}
                 className={
                     saved
-                        ? "cursor-default rounded-md bg-slate-200 px-3 py-1.5 text-xs font-medium text-slate-500"
+                        ? "rounded-md bg-slate-200 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-300 disabled:opacity-50"
                         : "rounded-md bg-rose-500 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-rose-600 disabled:cursor-not-allowed disabled:bg-slate-300"
                 }
             >
                 {buttonLabel}
-            </button>
+            </button>}
 
             {saveError && (
                 <p

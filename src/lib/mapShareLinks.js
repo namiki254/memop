@@ -1,7 +1,9 @@
+import { getMapVisibility } from "./mapVisibility.js";
 import { supabase } from "./supabase.js";
 import { getCurrentMapShare } from "./mapShareAccess.js";
 
-export async function getMapShareUrl(mapId, isPublic, canManage) {
+export async function getMapShareUrl(mapId, map, canManage) {
+  if (getMapVisibility(map) === "private") throw new Error("非公開マップは共有できません。");
   const url = new URL(`/maps/${mapId}`, window.location.origin);
   // ピンやコメントを指定していた場合は、共有リンクにもその指定を引き継ぐ。
   if (window.location.pathname === url.pathname) {
@@ -11,7 +13,7 @@ export async function getMapShareUrl(mapId, isPublic, canManage) {
       if (value) url.searchParams.set(name, value);
     }
   }
-  if (!isPublic) return url.href;
+  if (getMapVisibility(map) !== "unlisted") return url.href;
 
   let token = getCurrentMapShare(mapId)?.token;
   if (canManage || !token) {
