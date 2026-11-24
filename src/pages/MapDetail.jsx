@@ -10,6 +10,7 @@ import { PIN_TYPES, getPinEmoji } from "../lib/pinTypes";
 import { normalizeSearchText } from "../lib/searchText";
 import SaveToMyListButton from "../components/SaveToMyListButton";
 import { getGithubUsername } from "../lib/displayName";
+import { TABELOG_URL_UNAVAILABLE_MESSAGE, isTabelogColumnMissingError } from "../lib/tabelogUrl";
 import ThreeDotMenu, {
   MenuItem,
 } from "../components/ThreeDotMenu";
@@ -723,7 +724,7 @@ export default function MapDetail({ currentUser, isAdmin }) {
   }
 
   /** パネルの入力を pins テーブルに保存する */
-  async function handleSavePin({ title, content, pinType, kind, linkMapId }) {
+  async function handleSavePin({ title, content, pinType, kind, linkMapId, tabelogUrl = null }) {
     if (savingPin || !selectedPin) return;
 
     setSavingPin(true);
@@ -756,13 +757,17 @@ export default function MapDetail({ currentUser, isAdmin }) {
           // メールアドレスにフォールバックすると，他の閲覧者全員に生のメール
           // アドレスが見えてしまうため．
           creator_username: getGithubUsername(user),
+          // 食べログ URL は入力したときだけ送る．空欄なら，SQL 未適用の環境でもこれまでどおり保存できる（#5）
+          ...(tabelogUrl ? { tabelog_url: tabelogUrl } : {}),
         })
         .select()
         .single();
 
       if (insertError) {
         console.error("ピンの保存に失敗", insertError);
-        setPinError(`保存に失敗しました．${insertError.message}`);
+        setPinError(isTabelogColumnMissingError(insertError)
+          ? TABELOG_URL_UNAVAILABLE_MESSAGE
+          : `保存に失敗しました．${insertError.message}`);
         return;
       }
 
@@ -784,7 +789,7 @@ export default function MapDetail({ currentUser, isAdmin }) {
   }
 
   /** パネルで編集した内容を更新する */
-  async function handleUpdatePin({ title, content, pinType, kind, linkMapId }) {
+  async function handleUpdatePin({ title, content, pinType, kind, linkMapId, tabelogUrl = null }) {
     if (savingPin || !selectedPin) return;
 
     setSavingPin(true);
@@ -813,6 +818,8 @@ export default function MapDetail({ currentUser, isAdmin }) {
           pin_type: pinType,
           kind,
           link_map_id: kind === "button" ? linkMapId : null,
+          // 食べログ URL は変えたときだけ送る．触っていなければ，SQL 未適用の環境でもこれまでどおり更新できる（#5）
+          ...(tabelogUrl !== (selectedPin.tabelog_url ?? null) ? { tabelog_url: tabelogUrl } : {}),
         })
         .eq("id", selectedPin.id)
         .select()
@@ -820,7 +827,9 @@ export default function MapDetail({ currentUser, isAdmin }) {
 
       if (updateError) {
         console.error("ピンの更新に失敗", updateError);
-        setPinError(`更新に失敗しました．${updateError.message}`);
+        setPinError(isTabelogColumnMissingError(updateError)
+          ? TABELOG_URL_UNAVAILABLE_MESSAGE
+          : `更新に失敗しました．${updateError.message}`);
         return;
       }
 
