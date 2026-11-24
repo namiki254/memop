@@ -36,6 +36,7 @@ export default function App() {
   const location = useLocation();
   const searchParams = new URLSearchParams(location.search);
   const linkedPinId = searchParams.get("pin");
+  const mapShareToken = searchParams.get("share");
   const linkedUserId = searchParams.get("user")?.toLowerCase() ?? null;
   const { currentUser, authChecked, roleChecked, isAdmin, refreshRole } = useMapAccess();
   const accessKey = JSON.stringify([currentUser?.id, isAdmin]);
@@ -146,7 +147,7 @@ export default function App() {
             path="/maps/:id"
             element={authChecked ? (
               <MapDetail
-                key={JSON.stringify([accessKey, location.pathname, linkedPinId])}
+                key={JSON.stringify([accessKey, location.pathname, linkedPinId, mapShareToken])}
                 currentUser={currentUser}
                 isAdmin={isAdmin}
               />
