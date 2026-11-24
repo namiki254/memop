@@ -43,3 +43,12 @@ npm run dev
 
 `Could not find the table 'public.folders' in the schema cache` が出たら、まず `VITE_SUPABASE_URL` が目的のプロジェクトを指しているかと、そのプロジェクトの Table Editor に `public.folders` があるかを確認してください。
 
+## ビルドとチェック
+
+| コマンド | 用途 |
+| --- | --- |
+| `npm run lint` | コードを静的チェックする |
+| `npm run build` | 配布用ファイルを `dist/` に出力する |
+| `npm run preview` | ビルドしたアプリをローカルで確認する |
+
+Vercel でデプロイする場合も、接続先に合わせて上の2つの環境変数を設定します。ログインに使うデプロイ先の URL は Supabase Auth のリダイレクト許可リストに登録してください。
