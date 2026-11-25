@@ -1,8 +1,9 @@
-export default function ErrorMessage({ message }) {
-    return (
-        <div className="my-4 rounded-md bg-red-50 p-4 border border-red-200 text-red-700">
-            <p className="font-bold">エラーが発生しました</p>
-            <p className="mt-1 text-sm">{message || "予期せぬエラーが発生しました。"}</p>
-        </div>
-    );
+// ページ全体のエラーとして出すときは余白つき．フォームの中に置くときは className="" で余白を消す．
+export default function ErrorMessage({ message, className = "m-4" }) {
+  return (
+    <div role="alert" className={`notice-error ${className}`}>
+      <p className="font-bold">エラーが発生しました</p>
+      <p className="mt-1">{message || "予期せぬエラーが発生しました。"}</p>
+    </div>
+  );
 }
