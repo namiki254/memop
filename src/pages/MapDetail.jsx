@@ -19,6 +19,11 @@ import { TABELOG_URL_UNAVAILABLE_MESSAGE, isTabelogColumnMissingError } from "..
 import ThreeDotMenu, {
   MenuItem,
 } from "../components/ThreeDotMenu";
+import Icon from "../components/Icon.jsx";
+import HomeLink from "../components/HomeLink.jsx";
+import Breadcrumb from "../components/Breadcrumb.jsx";
+import AuthButton from "../components/AuthButton.jsx";
+import { showToast } from "../lib/toast.js";
 
 const MAP_BUTTON_FILTER = "kind:button";
 
@@ -67,6 +72,11 @@ export default function MapDetail({ currentUser, isAdmin }) {
 
   // コピー状態を覚える
   const [copied, setCopied] = useState(false);
+
+  // このマップをお気に入りにしているか（一覧のカードのハートと同じもの）．
+  // null は「まだ確かめていない」．確かめ終わるまでハートは押せないようにする．
+  const [isFavorited, setIsFavorited] = useState(null);
+  const [savingFavorite, setSavingFavorite] = useState(false);
   const [mapMenuOpen, setMapMenuOpen] = useState(false);
 
   // ピンのタイトル検索
@@ -221,6 +231,12 @@ export default function MapDetail({ currentUser, isAdmin }) {
     setDefaultTypeVisible(false);
     setTypeVisibility({});
   }
+
+  // 絞り込みが効いているかどうか．開閉ボタンに印を出して，閉じていても気づけるようにする．
+  const filtersActive =
+    searchQuery.trim() !== "" ||
+    showOnlyMyPins ||
+    availablePinTypes.some((type) => !isTypeEnabled(type.value));
 
   // 表示対象のピンに絞り込む（種類フィルタ × タイトル検索のAND条件）．
   // ただし今まさに編集中のピンは，フィルタに一致しなくなっても地図上から消さない
@@ -495,6 +511,27 @@ export default function MapDetail({ currentUser, isAdmin }) {
     return () => { cancelled = true; window.clearInterval(interval); window.removeEventListener("focus", refreshAccess); };
   }, [id, currentUserId]);
 
+  // このマップをお気に入りにしているかを確かめる（ログインしているときだけ）
+  useEffect(() => {
+    setIsFavorited(null);
+    if (!currentUserId) return;
+
+    let ignore = false;
+    supabase.from("map_favorites").select("map_id")
+      .eq("map_id", id).eq("user_id", currentUserId).maybeSingle()
+      .then(({ data, error: favoriteError }) => {
+        if (ignore) return;
+        if (favoriteError) {
+          console.error("お気に入りの状態を確認できませんでした", favoriteError);
+          return;
+        }
+        setIsFavorited(Boolean(data));
+      });
+    return () => {
+      ignore = true;
+    };
+  }, [id, currentUserId]);
+
   // 他の人が置いた・書き直した・消したピンを，リロードなしで反映する．
   //
   // Supabase側で pins テーブルの変更配信（Replication）を有効にしておかないと，
@@ -588,8 +625,10 @@ export default function MapDetail({ currentUser, isAdmin }) {
       data: { user },
     } = await supabase.auth.getUser();
 
+    // 未ログインのときは onMapClick 自体を渡していないので，通常ここには来ない．
+    // 来るのは，画面を開いたままログインが切れた場合．
     if (!user) {
-      alert("ピンを作成するにはログインしてください");
+      showToast("ピンを追加するにはログインしてください。", { tone: "error" });
       return;
     }
     setSelectedPin({ x, y });
@@ -653,12 +692,32 @@ export default function MapDetail({ currentUser, isAdmin }) {
 
   // コピー処理を追加
   // utrをクリップボードにコピー、2秒経ったらもとに戻す（Issueのコード通り）
+  async function toggleFavorite() {
+    if (!currentUserId || isFavorited === null || savingFavorite) return;
+
+    const next = !isFavorited;
+    setSavingFavorite(true);
+    // 押した瞬間に見た目を切り替え，失敗したら元に戻す
+    setIsFavorited(next);
+    const { error: favoriteError } = next
+      ? await supabase.from("map_favorites").insert({ map_id: id, user_id: currentUserId })
+      : await supabase.from("map_favorites").delete().eq("map_id", id).eq("user_id", currentUserId);
+    if (favoriteError) {
+      console.error("お気に入りの更新に失敗", favoriteError);
+      setIsFavorited(!next);
+      showToast("お気に入りを更新できませんでした。", { tone: "error" });
+    }
+    setSavingFavorite(false);
+  }
+
   async function copyUrl() {
     try {
       const url = await getMapShareUrl(id, map, canEditMap);
       await navigator.clipboard.writeText(url);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
+      // コピーできたことは画面上部の通知で伝える（保存ボタンの行をなくしたので，そこには出さない）
+      showToast("共有URLをコピーしました。");
     } catch (copyError) {
       console.error("共有リンクのコピーに失敗", copyError);
       setMapError("共有リンクをコピーできませんでした。");
@@ -957,17 +1016,31 @@ export default function MapDetail({ currentUser, isAdmin }) {
   }
 
   // 2. エラー時は ErrorMessage コンポーネントを表示（error.messageを渡す）
+  // スマホではこのページに共通ヘッダーが出ない（App.jsx）ので，
+  // 表示できなかったときも，ここから一覧に戻ったりログインしたりできるようにしておく．
   if (error) {
-    return <ErrorMessage message={error.message} />;
+    return (
+      <div className="p-4">
+        <ErrorMessage message={error.message} className="" />
+        <HomeLink className="btn mt-3" />
+      </div>
+    );
   }
 
   // URLのIDに一致するマップがなかった場合
   if (!map) {
     return (
-      <div className="grid h-full place-items-center p-8 text-slate-600">
-        <div className="max-w-md space-y-3 text-center">
-          <p className="text-lg font-semibold">マップが見つかりません</p>
+      <div className="grid h-full place-items-center overflow-auto p-8 text-sub">
+        <div className="w-full max-w-md space-y-3 text-center">
+          <p className="text-lg font-semibold text-ink">マップが見つかりません</p>
           {!currentUser && !getCurrentMapShare(id) && <p className="text-sm leading-relaxed">URL限定公開の場合は作成者から共有URLを受け取ってください。共有URLがあれば、ログインせずに閲覧できます。</p>}
+          <HomeLink className="btn" />
+          {!currentUser && (
+            <div className="border-t border-line pt-4 sm:hidden">
+              <p className="mb-3 text-sm leading-relaxed">自分の非公開マップは、ログインすると表示されます。</p>
+              <AuthButton centered />
+            </div>
+          )}
         </div>
       </div>
     );
@@ -1017,71 +1090,58 @@ export default function MapDetail({ currentUser, isAdmin }) {
 
   return (
 
-    <div className="relative flex h-full min-w-0 bg-rose-100">
-      <div className="flex h-full min-w-0 flex-1 flex-col">
-        <div className="border-b border-rose-200 bg-white px-3 py-2 sm:px-4">
-          <Link
-            to={backHref}
-            className="mb-1 inline-flex items-center gap-1 text-xs font-medium text-rose-600 hover:underline"
-          >
-            <span aria-hidden="true">←</span>
-            {backLabel}
-          </Link>
-
-          {/* パンくずリスト */}
-          <p className="mb-1 truncate whitespace-nowrap text-xs text-slate-500">
-            <Link to="/" className="hover:underline">
-              ホーム
-            </Link>
-
-            {breadcrumb.map((folder) => (
-              <span key={folder.id}>
-                {" / "}
-                <Link
-                  to={`/folders/${folder.id}`}
-                  className="hover:underline"
-                >
-                  {folder.name}
-                </Link>
-              </span>
-            ))}
-
-            {" / "}
-            <span>{map.title}</span>
-          </p>
+    <div className="relative flex h-full min-w-0 bg-[#e9e5e0]">
+      <div className="relative flex h-full min-w-0 flex-1 flex-col">
+        <div className="relative z-40 border-b border-line bg-surface px-3 py-1 sm:px-4 sm:py-2">
+          {/*
+            パンくずリスト（広い画面だけ）．末尾の項目が「1つ上（フォルダまたはホーム）へ戻る」を兼ねるので，
+            戻る矢印は置かない（矢印と末尾の項目が同じ場所へ移動する，重複したボタンになるため）．
+            スマホでは地図を広く見せるためパンくずを出さず，代わりに戻る矢印だけを下のタイトルの行に置く．
+          */}
+          {/*
+            マップがフォルダに入っていないときは，戻り先がホームだけなので「‹ ホーム」の戻るリンクにする．
+            フォルダに入っているときは「ホーム › フォルダ」のパンくず．
+          */}
+          {breadcrumb.length === 0 ? (
+            <HomeLink className="-ml-1 hidden rounded-md py-0.5 pl-0.5 pr-1.5 text-xs text-sub hover:bg-ink/5 hover:text-ink sm:inline-flex" />
+          ) : (
+            <Breadcrumb folders={breadcrumb} className="hidden min-w-0 py-0.5 text-xs text-sub sm:block" />
+          )}
           {isEditingMap ? (
-            <form onSubmit={handleUpdateMap}>
+            <form onSubmit={handleUpdateMap} className="mt-1 max-w-2xl">
               <input
                 type="text"
+                aria-label="マップのタイトル"
                 value={mapTitle}
                 onChange={(e) => setMapTitle(e.target.value)}
                 disabled={savingMap}
                 maxLength={100}
-                className="w-full rounded border border-slate-300 px-3 py-1.5 text-lg font-bold disabled:bg-slate-100"
+                className="field font-bold"
               />
               <textarea
+                aria-label="マップの説明"
                 value={mapDescription}
                 onChange={(e) => setMapDescription(e.target.value)}
                 disabled={savingMap}
                 maxLength={500}
                 rows={2}
                 placeholder="説明（任意）"
-                className="mt-2 w-full rounded border border-slate-300 px-3 py-2 text-sm disabled:bg-slate-100"
+                className="field mt-2"
               />
 
               <MapVisibilitySelect id="editMapVisibility" value={mapVisibility} onChange={setMapVisibility} disabled={savingMap} />
 
               {mapError && (
-                <p className="mt-2 rounded bg-red-50 p-2 text-sm text-red-700">
+                <p className="notice-error mt-2">
                   {mapError}
                 </p>
               )}
 
-              <div className="mt-2 flex gap-2">
+              <div className="mt-3 flex gap-2">
                 <button
                   type="submit"
                   disabled={savingMap || mapTitle.trim() === ""}
-                  className="rounded bg-slate-800 px-3 py-1.5 text-xs text-white disabled:cursor-not-allowed disabled:bg-slate-300"
+                  className="btn btn-primary"
                 >
                   {savingMap ? "保存中..." : "保存"}
                 </button>
@@ -1089,7 +1149,7 @@ export default function MapDetail({ currentUser, isAdmin }) {
                   type="button"
                   onClick={cancelEditingMap}
                   disabled={savingMap}
-                  className="rounded border border-slate-300 px-3 py-1.5 text-xs text-slate-700 disabled:opacity-50"
+                  className="btn"
                 >
                   キャンセル
                 </button>
@@ -1097,293 +1157,329 @@ export default function MapDetail({ currentUser, isAdmin }) {
             </form>
           ) : (
             <>
-              {/* タイトルとボタン類を横並びにするためにflexを使用 */}
-              <div className="flex flex-col items-start gap-1 sm:flex-row sm:items-center sm:justify-between">
-                <div className="flex w-full min-w-0 flex-wrap items-center gap-1 sm:w-auto sm:flex-1">
-                  <h2 className="min-w-0 break-words text-lg font-bold text-slate-800">
+              {/*
+                タイトルの行．スマホでは戻る・ハート・しおり・メニュー・アカウントのアイコンが並んで窮屈なので，
+                アイコンだけのボタンの押せる範囲を一回り小さく（44px → 36px）し，間も詰めている．
+                アイコンの大きさは変えない．広い画面はふだんどおり．
+              */}
+              <div className="flex min-w-0 items-center gap-0.5 max-sm:[&_.btn-icon]:size-9 sm:gap-1">
+                {/* スマホ用の戻る矢印（広い画面では，上のパンくずの末尾の項目が戻る役を兼ねる） */}
+                <Link
+                  to={backHref}
+                  aria-label={backLabel}
+                  className="btn-icon -ml-2 sm:hidden"
+                >
+                  <Icon name="arrowLeft" className="size-5" />
+                </Link>
+
+                <div className="flex min-w-0 flex-1 items-center gap-2">
+                  <h2 className="min-w-0 truncate text-base font-bold text-ink sm:text-lg">
                     {map.title}
                   </h2>
 
-                  {/* 公開範囲バッジ */}
-                  <span
-                    className={`shrink-0 rounded px-2 py-0.5 text-xs font-medium ${map.is_public
-                      ? "bg-slate-100 text-slate-700"
-                      : "bg-amber-100 text-amber-800"
-                      }`}
-                  >
+                  {/* 公開範囲バッジ．スマホではタイトルの幅を確保するため，下の説明の行に出す */}
+                  <span className={`tag max-sm:hidden ${map.is_public ? "" : "tag-private"}`}>
                     {getMapVisibilityLabel(map)}
                   </span>
                 </div>
 
-                <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:shrink-0 sm:justify-end">
+                {siblingMaps.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setSiblingMapsOpen((current) => !current)}
+                    aria-expanded={siblingMapsOpen}
+                    aria-label={`同じフォルダのマップ（${siblingMaps.length}件）`}
+                    title="同じフォルダのマップ"
+                    className={`btn btn-sm px-2.5 ${siblingMapsOpen ? "bg-ink/5" : ""}`}
+                  >
+                    <Icon name="folder" />
+                    {siblingMaps.length}
+                  </button>
+                )}
+
+                {/*
+                  お気に入り（ハート）と，他の人のマップだけ自分の一覧への保存（しおり）．
+                  どちらも一覧のカードと同じアイコンで，
+                  押すたびに保存と解除が切り替わる（保存済みは塗りつぶし）．自分のマップでは何も表示されない．
+                */}
+                {currentUser && (
+                  <button
+                    type="button"
+                    onClick={toggleFavorite}
+                    disabled={isFavorited === null || savingFavorite}
+                    aria-pressed={Boolean(isFavorited)}
+                    aria-label={isFavorited ? "お気に入り解除" : "お気に入り登録"}
+                    title={isFavorited ? "お気に入り解除" : "お気に入り登録"}
+                    className={`btn-icon ${isFavorited ? "text-accent" : "text-line-strong hover:text-sub"}`}
+                  >
+                    <Icon name="heart" filled={Boolean(isFavorited)} className="size-5" />
+                  </button>
+                )}
+
+                {currentUser && (
                   <SaveToMyListButton
                     itemType="map"
                     itemId={map.id}
                     ownerId={map.user_id}
                     currentUser={currentUser}
+                    variant="icon"
                   />
-                  {/* コピー成功時に左側にメッセージを表示 */}
-                  {copied && (
-                    <span className="text-xs font-medium text-emerald-600">
-                      コピーしました
-                    </span>
-                  )}
+                )}
 
-                  <ThreeDotMenu
-                    label={`${map.title}の操作メニューを開く`}
-                    isOpen={mapMenuOpen}
-                    onToggle={() => setMapMenuOpen((current) => !current)}
-                    onClose={() => setMapMenuOpen(false)}
-                  >
-                    {currentVisibility !== "private" && <MenuItem onClick={copyUrl}>
-                      {copied ? "✓ コピーしました" : "🔗 共有URLをコピー"}
-                    </MenuItem>}
+                <ThreeDotMenu
+                  label={`${map.title}の操作メニューを開く`}
+                  isOpen={mapMenuOpen}
+                  onToggle={() => setMapMenuOpen((current) => !current)}
+                  onClose={() => setMapMenuOpen(false)}
+                >
+                  {currentVisibility !== "private" && <MenuItem icon={copied ? "check" : "link"} onClick={copyUrl}>
+                    {copied ? "コピーしました" : "共有URLをコピー"}
+                  </MenuItem>}
 
-                    {canEditMap && (
-                      <MenuItem
-                        onClick={() => {
-                          setMapMenuOpen(false);
-                          startEditingMap();
-                        }}
-                      >
-                        編集
-                      </MenuItem>
-                    )}
-
-                    {canEditMap && (
-                      <MenuItem
-                        danger
-                        disabled={savingMap}
-                        onClick={() => {
-                          setMapMenuOpen(false);
-                          handleDeleteMap();
-                        }}
-                      >
-                        削除
-                      </MenuItem>
-                    )}
-                  </ThreeDotMenu>
-
-
-                  {siblingMaps.length > 0 && (
-                    <button
-                      type="button"
-                      onClick={() => setSiblingMapsOpen((current) => !current)}
-                      aria-expanded={siblingMapsOpen}
-                      className="shrink-0 whitespace-nowrap rounded-md border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                  {canEditMap && (
+                    <MenuItem
+                      icon="edit"
+                      onClick={() => {
+                        setMapMenuOpen(false);
+                        startEditingMap();
+                      }}
                     >
-                      {siblingMapsOpen
-                        ? "フォルダ内マップを閉じる"
-                        : `フォルダ内マップ（${siblingMaps.length}）`}
-                    </button>
+                      編集
+                    </MenuItem>
                   )}
 
+                  {canEditMap && (
+                    <MenuItem
+                      icon="trash"
+                      danger
+                      disabled={savingMap}
+                      onClick={() => {
+                        setMapMenuOpen(false);
+                        handleDeleteMap();
+                      }}
+                    >
+                      削除
+                    </MenuItem>
+                  )}
+                </ThreeDotMenu>
 
-
+                {/* スマホでは共通ヘッダーを出さないので，ログイン・ログアウトをここに置く */}
+                <div className="sm:hidden">
+                  <AuthButton />
                 </div>
               </div>
 
-              {map.description && (
-                <p className="mt-1 text-sm text-slate-500">{map.description}</p>
-              )}
+              {/*
+                公開範囲と説明．スマホでは1行に収め，ピンのパネルを開いている間は
+                地図の表示領域を優先して隠す．左の余白は，戻る矢印の分だけタイトルと揃えるためのもの．
+              */}
+              <div className={`flex min-w-0 items-center gap-2 pb-1 pl-10 sm:pb-0 sm:pl-0 ${selectedPin ? "max-sm:hidden" : ""}`}>
+                <span className={`tag sm:hidden ${map.is_public ? "" : "tag-private"}`}>
+                  {getMapVisibilityLabel(map)}
+                </span>
+                {map.description && (
+                  <p className="line-clamp-1 min-w-0 break-words text-xs text-sub sm:line-clamp-2 sm:text-sm">{map.description}</p>
+                )}
+              </div>
+
               {mapError && (
-                <p className="mt-2 rounded bg-red-50 p-2 text-sm text-red-700">
+                <p className="notice-error mt-2">
                   {mapError}
                 </p>
               )}
             </>
           )}
-
-          {/* ピンの種類ごとの表示・非表示の切替，タイトル検索 */}
-
         </div>
 
-        <div className="relative min-h-0 min-w-0 flex-1 overflow-hidden">
-          <div className="absolute left-3 top-3 z-30">
+        <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+          {/*
+            地図の上に重ねる操作．左に絞り込み，右にピン一覧．
+            狭い画面で両方開くと重なるので，片方を開いたらもう片方は閉じる．
+          */}
+          <div className={`pointer-events-none absolute inset-x-3 top-3 z-30 items-start justify-between gap-2 ${selectedPin ? "hidden sm:flex" : "flex"}`}>
             <button
               type="button"
-              onClick={() => setFiltersOpen((current) => !current)}
+              onClick={() => {
+                setFiltersOpen((current) => !current);
+                setIsPinListOpen(false);
+              }}
               aria-expanded={filtersOpen}
               aria-controls="map-filters"
-              className="
-                flex items-center justify-between
-                rounded-md border border-slate-200
-                bg-white/95
-                px-3 py-2
-                text-xs font-medium text-slate-700
-                shadow-md backdrop-blur
-                hover:bg-slate-50
-              "
+              className={`btn pointer-events-auto shadow-sm ${filtersOpen ? "border-ink" : ""}`}
             >
-              <span>検索・表示フィルタ</span>
-              <span aria-hidden="true" className="ml-3">
-                {filtersOpen ? "▲" : "▼"}
-              </span>
+              <Icon name="filter" />
+              絞り込み
+              {filtersActive && (
+                <span className="size-2 rounded-full bg-accent">
+                  <span className="sr-only">（絞り込み中）</span>
+                </span>
+              )}
             </button>
 
-            {filtersOpen && (
-              <div
-                id="map-filters"
-                className="
-                  mt-2
-                  max-h-[70vh]
-                  w-72
-                  max-w-[calc(100vw-1.5rem)]
-                  space-y-4
-                  overflow-y-auto
-                  rounded-lg
-                  border border-slate-200
-                  bg-white
-                  p-3
-                  shadow-xl
-                "
-              >
-                <label className="block">
-                  <span className="block text-xs font-semibold text-slate-600">
-                    タイトル検索
+            <button
+              type="button"
+              onClick={() => {
+                setIsPinListOpen((open) => !open);
+                setFiltersOpen(false);
+              }}
+              aria-expanded={isPinListOpen}
+              aria-controls="map-pin-list"
+              className={`btn pointer-events-auto shadow-sm ${isPinListOpen ? "border-ink" : ""}`}
+            >
+              <Icon name="list" />
+              ピン
+              <span className="text-sub">{visiblePins.length}</span>
+            </button>
+          </div>
+
+          {filtersOpen && (
+            <div
+              id="map-filters"
+              // スマホでは地図に重ねず，地図の下に並べる（max-sm:order-last）．
+              // 重ねると地図が隠れて，絞り込んだ結果を見ながら選べないため．広い画面では左上に浮かべる．
+              // スマホでピンのパネルが開いている間は，地図が狭くなりすぎないよう一時的に引っ込める．
+              className={`relative z-30 max-h-[60%] shrink-0 space-y-3 overflow-y-auto overscroll-contain border-t border-line bg-surface p-3 max-sm:order-last sm:absolute sm:left-3 sm:top-14 sm:max-h-[calc(100%-5rem)] sm:w-72 sm:space-y-4 sm:rounded-xl sm:border sm:shadow-lg ${selectedPin ? "max-sm:hidden" : ""}`}
+            >
+              <label className="block">
+                <span className="block text-xs font-bold text-sub">
+                  タイトルで検索
+                </span>
+
+                <input
+                  type="search"
+                  placeholder="ピンのタイトル"
+                  value={searchQuery}
+                  onChange={(event) => setSearchQuery(event.target.value)}
+                  className="field mt-1"
+                />
+              </label>
+
+              <div>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-xs font-bold text-sub">
+                    表示する種類
                   </span>
 
-                  <input
-                    type="text"
-                    placeholder="ピンを検索..."
-                    value={searchQuery}
-                    onChange={(event) => setSearchQuery(event.target.value)}
-                    className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
-                  />
-                </label>
-
-                <div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-xs font-semibold text-slate-600">
-                      表示フィルタ
-                    </span>
-
+                  <span className="flex items-center text-xs">
                     <button
                       type="button"
                       onClick={handleSelectAll}
-                      className="text-xs text-blue-600 hover:underline"
+                      className="rounded px-2 py-2 text-accent-strong hover:underline"
                     >
-                      すべてオン
+                      すべて表示
                     </button>
-
-                    <span className="text-xs text-slate-300">|</span>
-
                     <button
                       type="button"
                       onClick={handleDeselectAll}
-                      className="text-xs text-blue-600 hover:underline"
+                      className="rounded px-2 py-2 text-accent-strong hover:underline"
                     >
-                      すべてオフ
+                      すべて隠す
                     </button>
-                  </div>
-
-                  <div className="mt-2 flex flex-wrap gap-x-4 gap-y-2">
-                    {availablePinTypes.map((type) => (
-                      <label
-                        key={type.value}
-                        className="flex cursor-pointer items-center gap-1.5 text-xs text-slate-700"
-                      >
-                        <input
-                          type="checkbox"
-                          checked={isTypeEnabled(type.value)}
-                          onChange={() => handleTypeToggle(type.value)}
-                          className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-                        />
-
-                        <span className="max-w-[8rem] truncate">
-                          {type.isCustom
-                            ? type.label
-                            : `${type.emoji}: ${type.label}`}
-                        </span>
-                      </label>
-                    ))}
-                  </div>
+                  </span>
                 </div>
-                {currentUser && (
-                  <label className="flex cursor-pointer items-center gap-1.5 rounded-full bg-white px-2.5 py-1.5 text-xs font-semibold text-[#685F5D] transition hover:bg-[#FFF8F8]">
-                    <input
-                      type="checkbox"
-                      checked={showOnlyMyPins}
-                      onChange={(e) => setShowOnlyMyPins(e.target.checked)}
-                      className="accent-[#F47281]"
-                    />
-                    <span>自分のピンのみ表示</span>
-                  </label>
-                )}
+
+                {/* スマホは横幅いっぱいを使えるので，縦に積まず横に流して高さを抑える */}
+                <div className="flex flex-wrap gap-x-5 sm:grid sm:grid-cols-2 sm:gap-x-2">
+                  {availablePinTypes.map((type) => (
+                    <label
+                      key={type.value}
+                      className="flex min-h-10 min-w-0 max-w-full cursor-pointer items-center gap-2 text-sm text-ink sm:min-h-8"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={isTypeEnabled(type.value)}
+                        onChange={() => handleTypeToggle(type.value)}
+                        className="size-4 shrink-0 accent-accent"
+                      />
+
+                      <span className="min-w-0 truncate">
+                        {type.isCustom
+                          ? type.label
+                          : `${type.emoji} ${type.label}`}
+                      </span>
+                    </label>
+                  ))}
+                </div>
               </div>
-            )}
-          </div>
-          <div className="absolute right-3 top-3 z-30 flex flex-col items-end">
-            <button
-              type="button"
-              onClick={() => setIsPinListOpen((open) => !open)}
-              aria-expanded={isPinListOpen}
-              className="flex items-center gap-2 rounded-full bg-white px-3 py-2 text-sm font-bold text-[#685F5D] shadow-lg transition hover:bg-[#FFF8F8]"
+              {currentUser && (
+                <label className="flex min-h-10 cursor-pointer items-center gap-2 border-t border-line pt-2 text-sm text-ink sm:min-h-8">
+                  <input
+                    type="checkbox"
+                    checked={showOnlyMyPins}
+                    onChange={(e) => setShowOnlyMyPins(e.target.checked)}
+                    className="size-4 shrink-0 accent-accent"
+                  />
+                  <span>自分のピンだけ表示</span>
+                </label>
+              )}
+            </div>
+          )}
+
+          {isPinListOpen && (
+            <aside
+              id="map-pin-list"
+              aria-label="ピン一覧"
+              className={`absolute right-3 top-16 z-30 flex max-h-[calc(100%-5rem)] w-64 max-w-[calc(100%-1.5rem)] flex-col overflow-hidden rounded-xl border border-line bg-surface shadow-lg sm:top-14 ${selectedPin ? "max-sm:hidden" : ""}`}
             >
-              <span aria-hidden="true">{isPinListOpen ? "✕" : "☰"}</span>
-              <span>ピン一覧</span>
-            </button>
+              {visiblePins.length > 0 ? (
+                // アイコンの列は，一覧の中でいちばん幅の広いアイコンに合わせて広がる（自由入力は4文字まで入るため）．
+                // 各行を subgrid にして列を共有しているので，アイコンの幅が違ってもタイトルの書き出しは揃う．
+                <ul className="grid min-h-0 grid-cols-[auto_minmax(0,1fr)] content-start overflow-y-auto overscroll-contain p-1">
+                  {visiblePins.map((pin) => (
+                    <li key={pin.id} className="col-span-2 grid grid-cols-subgrid">
+                      <button
+                        type="button"
+                        onClick={() => handlePinListClick(pin)}
+                        className={`col-span-2 grid min-h-11 w-full min-w-0 grid-cols-subgrid items-center gap-x-2 rounded-lg px-2.5 text-left text-sm sm:min-h-9 ${selectedPin?.id === pin.id
+                          ? "bg-accent-soft font-bold text-accent-strong"
+                          : "text-ink hover:bg-ink/5"
+                          }`}
+                      >
+                        <span className="grid min-w-5 place-items-center whitespace-nowrap" aria-hidden="true">
+                          {pin.kind === "button"
+                            ? <Icon name="arrowRight" className="size-4 text-sub" />
+                            : getPinEmoji(pin.pin_type)}
+                        </span>
 
-            {isPinListOpen && (
-              <aside className="mt-2 w-64 max-w-[calc(100vw-1.5rem)] overflow-hidden rounded-2xl border border-[#F1E4DF] bg-white/95 shadow-xl backdrop-blur-sm">
-                <div className="border-b border-[#F1E4DF] px-3 py-2">
-                  <p className="text-xs font-bold text-[#817878]">
-                    ピン一覧（{visiblePins.length}件）
-                  </p>
-                </div>
-
-                {visiblePins.length > 0 ? (
-                  <ul className="max-h-72 space-y-1 overflow-y-auto p-2">
-                    {visiblePins.map((pin) => (
-                      <li key={pin.id}>
-                        <button
-                          type="button"
-                          onClick={() => handlePinListClick(pin)}
-                          className={`flex w-full min-w-0 items-center gap-2 rounded-xl px-3 py-2 text-left text-sm transition ${selectedPin?.id === pin.id
-                              ? "bg-[#FFF0F1] text-[#C95765]"
-                              : "text-[#685F5D] hover:bg-[#FAF6F3]"
-                            }`}
-                        >
-                          <span className="shrink-0" aria-hidden="true">
-                            {pin.kind === "button"
-                              ? "🔗"
-                              : getPinEmoji(pin.pin_type)}
-                          </span>
-
-                          <span className="min-w-0 flex-1 truncate font-semibold">
-                            {pin.title}
-                          </span>
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                ) : (
-                  <p className="px-3 py-4 text-center text-xs text-[#9A908D]">
-                    表示できるピンがありません
-                  </p>
-                )}
-              </aside>
-            )}
+                        <span className="min-w-0 truncate">
+                          {pin.title}
+                        </span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="px-3 py-4 text-center text-xs text-sub">
+                  {filtersActive ? "絞り込みに一致するピンがありません" : "ピンはまだありません"}
+                </p>
+              )}
+            </aside>
+          )}
+          {/* 地図は残りの高さをすべて使う．スマホで下に絞り込みが並ぶと，その分だけ縮む． */}
+          <div className="relative min-h-0 min-w-0 flex-1">
+            <MapView
+              // マップを切り替えたときにズーム倍率(scale)をリセットするため，
+              // マップごとに別インスタンスとして作り直す．
+              key={map.id}
+              map={map}
+              pins={displayPins}
+              pendingPin={
+                selectedPin && !selectedPin.id
+                  ? { ...selectedPin, ...pendingPinAppearance }
+                  : null
+              }
+              // 詳細パネルで開いているピンをマップ上でも強調する（新規ピンは id が無いので対象外）
+              selectedPinId={selectedPin?.id ?? null}
+              onPinClick={handlePinClick}
+              onPinDoubleClick={handlePinDoubleClick}
+              // 未ログインではピンを作れないので，地図を押しても何も起こさない．
+              // （スクロールしようとして触れるたびに「ログインしてください」と出るのを防ぐ）
+              onMapClick={isEditingPin || !currentUser ? undefined : handleMapClick}
+              movablePinId={isEditingPin ? selectedPin?.id : null}
+              onPinMove={handleMovePin}
+              dense={Boolean(selectedPin)}
+            />
           </div>
-          <MapView
-            // マップを切り替えたときにズーム倍率(scale)をリセットするため，
-            // マップごとに別インスタンスとして作り直す．
-            key={map.id}
-            map={map}
-            pins={displayPins}
-            pendingPin={
-              selectedPin && !selectedPin.id
-                ? { ...selectedPin, ...pendingPinAppearance }
-                : null
-            }
-            // 詳細パネルで開いているピンをマップ上でも強調する（新規ピンは id が無いので対象外）
-            selectedPinId={selectedPin?.id ?? null}
-            onPinClick={handlePinClick}
-            onPinDoubleClick={handlePinDoubleClick}
-            onMapClick={isEditingPin ? undefined : handleMapClick}
-            movablePinId={isEditingPin ? selectedPin?.id : null}
-            onPinMove={handleMovePin}
-          />
         </div>
 
         {selectedPin && (
@@ -1410,7 +1506,7 @@ export default function MapDetail({ currentUser, isAdmin }) {
           />
         )}
         {requestedPinMissing && (
-          <p role="status" className="absolute inset-x-4 bottom-4 z-10 rounded-md bg-white p-3 text-sm text-slate-700 shadow">
+          <p role="status" className="absolute inset-x-4 bottom-4 z-10 rounded-lg border border-line bg-surface p-3 text-sm text-ink shadow-lg">
             リンク先のピンを開けませんでした。
           </p>
         )}
@@ -1418,43 +1514,31 @@ export default function MapDetail({ currentUser, isAdmin }) {
       {/* 同じフォルダの閲覧可能なマップへの切り替え */}
       {siblingMapsOpen && siblingMaps.length > 0 && (
         <>
-          {/* スマホでは一覧の後ろを暗くする */}
+          {/* スマホでは一覧の外側を押しても閉じられるようにする */}
           <button
             type="button"
             aria-label="フォルダ内マップの一覧を閉じる"
             onClick={() => setSiblingMapsOpen(false)}
-            className="absolute inset-0 z-20 bg-transparent sm:hidden"
+            className="absolute inset-0 z-40 cursor-default bg-black/30 sm:hidden"
           />
 
-          <aside
-            className="
-        absolute inset-y-0 right-0 z-30
-        w-64 overflow-auto
-        border-l border-slate-200
-        bg-white p-3
-        shadow-xl
-
-        sm:static
-        sm:w-48
-        sm:shrink-0
-        sm:shadow-none
-      "
-          >
+          <aside className="absolute inset-y-0 right-0 z-40 w-64 max-w-[85vw] overflow-auto overscroll-contain border-l border-line bg-surface p-3 shadow-xl sm:static sm:z-auto sm:w-52 sm:shrink-0 sm:shadow-none">
             <div className="flex items-center justify-between gap-2">
-              <p className="text-xs font-bold text-slate-400">
+              <p className="text-xs font-bold text-sub">
                 同じフォルダのマップ
               </p>
 
               <button
                 type="button"
                 onClick={() => setSiblingMapsOpen(false)}
-                className="shrink-0 text-xs text-slate-500 underline"
+                aria-label="フォルダ内マップの一覧を閉じる"
+                className="btn-icon -mr-1.5"
               >
-                閉じる
+                <Icon name="close" className="size-5" />
               </button>
             </div>
 
-            <ul className="mt-2 space-y-1">
+            <ul className="mt-1 space-y-0.5">
               {siblingMaps.map((sibling) => {
                 const isActive = sibling.id === map.id;
 
@@ -1462,24 +1546,16 @@ export default function MapDetail({ currentUser, isAdmin }) {
                   <li key={sibling.id}>
                     <Link
                       to={`/maps/${sibling.id}`}
-                      className={`flex items-center justify-between gap-1 rounded px-2 py-1.5 text-sm ${isActive
-                        ? "bg-slate-800 text-white"
-                        : "text-slate-700 hover:bg-slate-100"
+                      aria-current={isActive ? "page" : undefined}
+                      className={`flex min-h-11 items-center justify-between gap-2 rounded-lg px-2 text-sm sm:min-h-9 ${isActive
+                        ? "bg-ink/5 font-bold text-ink"
+                        : "text-sub hover:bg-ink/5 hover:text-ink"
                         }`}
                     >
                       <span className="truncate">{sibling.title}</span>
 
                       {/* 公開範囲バッジ */}
-                      <span
-                        className={`shrink-0 rounded px-1 py-0.5 text-[10px] font-medium ${isActive
-                          ? sibling.is_public
-                            ? "bg-slate-700 text-slate-200"
-                            : "bg-amber-900/60 text-amber-200"
-                          : sibling.is_public
-                            ? "bg-slate-100 text-slate-600"
-                            : "bg-amber-100 text-amber-800"
-                          }`}
-                      >
+                      <span className={`tag ${sibling.is_public ? "" : "tag-private"}`}>
                         {getMapVisibilityLabel(sibling)}
                       </span>
                     </Link>

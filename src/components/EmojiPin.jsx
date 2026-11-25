@@ -23,7 +23,7 @@ export function EmojiPin({
   // 空文字も未指定と同じ扱いにする（見えないピンになるのを防ぐ）
   const text = String(emoji || "📍");
   // 選択中は色だけでなく，外側の太い枠（白い隙間つき）でも見分けられるようにする
-  const borderClasses = selected ? "border-rose-600" : "border-rose-300";
+  const borderClasses = selected ? "border-accent" : "border-ink/70";
 
   return (
     <span
@@ -36,12 +36,17 @@ export function EmojiPin({
           relative z-10 flex w-max items-center justify-center
           overflow-hidden whitespace-nowrap
           rounded-lg border-2 ${borderClasses}
-          bg-white font-bold text-[#3F3A3A]
-          ${selected ? "shadow-lg ring-4 ring-rose-600 ring-offset-2 ring-offset-white" : "shadow-md"}
+          bg-white font-bold text-ink
+          ${selected ? "shadow-lg ring-4 ring-accent ring-offset-2 ring-offset-white" : "shadow-md"}
           ${sizeClasses.body}
         `}
       >
-        <span className="max-w-full truncate leading-none">
+        {/*
+          行の高さは文字より広く取る（leading-normal）．
+          絵文字は文字の枠より少し上にはみ出して描かれるので，行の高さを文字ぴったり（leading-none）にすると，
+          truncate のはみ出し隠しで絵文字の上が切れてしまう．枠の中で中央に置かれるので，位置は変わらない．
+        */}
+        <span className="max-w-full truncate leading-normal">
           {text}
         </span>
       </span>
