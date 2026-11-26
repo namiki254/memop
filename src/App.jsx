@@ -92,7 +92,7 @@ export default function App() {
       <header className={`relative z-40 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 border-b border-line bg-surface px-4 py-2 sm:gap-x-3 sm:px-6 ${isMapDetail ? "max-sm:hidden" : ""}`}>
         <Link
           to="/"
-          className="mr-auto shrink-0 whitespace-nowrap py-1 text-lg font-bold tracking-wide text-ink"
+          className="mr-auto shrink-0 whitespace-nowrap py-1 text-xl font-black tracking-tight text-rose-400 sm:text-2xl"
         >
           めもっぷ
         </Link>

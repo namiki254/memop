@@ -19,7 +19,7 @@
  * アイコンの大きさは components/Icon.jsx の冒頭に書いてある．
  */
 @theme {
-  --color-paper: #f6f4f1;
+  --color-paper: #fff7f8;
   --color-surface: #ffffff;
   --color-ink: #26221f;
   --color-sub: #655e59;

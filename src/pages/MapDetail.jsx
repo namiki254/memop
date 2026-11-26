@@ -1090,7 +1090,7 @@ export default function MapDetail({ currentUser, isAdmin }) {
 
   return (
 
-    <div className="relative flex h-full min-w-0 bg-[#e9e5e0]">
+    <div className="relative flex h-full min-w-0 bg-paper">
       <div className="relative flex h-full min-w-0 flex-1 flex-col">
         <div className="relative z-40 border-b border-line bg-surface px-3 py-1 sm:px-4 sm:py-2">
           {/*
