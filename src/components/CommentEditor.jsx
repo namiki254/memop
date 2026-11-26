@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { supabase } from "../lib/supabase.js";
+import AutoGrowTextarea from "./AutoGrowTextarea.jsx";
 
 export default function CommentEditor({ commentId, content, onSave, onCancel }) {
   // 編集を開いた時点の本文を覚えて、他の人の変更を上書きしないようにする。
@@ -43,22 +44,22 @@ export default function CommentEditor({ commentId, content, onSave, onCancel }) 
   }
 
   return (
-    <form onSubmit={saveComment} className="mt-2 space-y-2 text-sm">
-      <textarea
+    <form onSubmit={saveComment} className="mt-2 space-y-2">
+      <AutoGrowTextarea
         ref={inputRef}
         aria-label="コメント本文"
-        className="w-full rounded-md border border-rose-200 bg-white p-2 text-sm text-slate-800"
+        className="field max-h-40"
         value={draft}
         onChange={(event) => setDraft(event.target.value)}
         disabled={saving}
-        rows={3}
+        maxLength={200}
       />
-      {error && <p role="alert" className="break-words text-xs text-red-700">{error}</p>}
+      {error && <p role="alert" className="break-words text-xs text-danger">{error}</p>}
       <div className="flex flex-wrap gap-2">
-        <button type="submit" disabled={saving || !canSave} className="rounded-md bg-rose-600 px-3 py-1 text-white disabled:opacity-50">
+        <button type="submit" disabled={saving || !canSave} className="btn btn-sm btn-primary">
           {saving ? "保存中…" : "保存"}
         </button>
-        <button type="button" disabled={saving} onClick={onCancel} className="rounded-md px-2 py-1 text-slate-700 hover:bg-white disabled:opacity-50">
+        <button type="button" disabled={saving} onClick={onCancel} className="btn btn-sm btn-quiet">
           キャンセル
         </button>
       </div>

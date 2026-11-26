@@ -18,7 +18,7 @@ export function renderTextWithLinks(text) {
                     href={part}   // リンク先のurl
                     target="_blank"   // クリックしたら新しいタブでページを開くように設定
                     rel="noopener noreferrer"   // 新しいタブから元のページが操作されるセキュリティリスクを防ぐための保護属性を追加
-                    className="text-blue-600 underline hover:text-blue-800"   // リンクを青色、下線付き、ホバー時に濃い青色で装飾
+                    className="text-accent-strong underline underline-offset-2 hover:text-accent"   // リンクを青色、下線付き、ホバー時に濃い青色で装飾
                 >
                     {part}
                 </a>

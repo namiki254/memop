@@ -4,7 +4,7 @@ import ErrorMessage from "../components/ErrorMessage.jsx";
 import Loading from "../components/Loading.jsx";
 
 const PAGE_SIZE = 50;
-const buttonClass = "rounded-md border border-rose-200 px-3 py-2 text-sm font-semibold text-rose-700 hover:bg-rose-50 disabled:opacity-40";
+const buttonClass = "btn btn-sm";
 
 export default function AdminUsers({ currentUserId, linkedUserId, isAdmin, roleChecked, refreshRole }) {
   // 各管理画面のユーザーリンクから来たときは、該当ページを Supabase に問い合わせる。
@@ -108,6 +108,11 @@ export default function AdminUsers({ currentUserId, linkedUserId, isAdmin, roleC
   const hasNextPage = !loading && result.data?.length > PAGE_SIZE;
   const hasLinkedUser = Boolean(linkedUserId && users.some((user) => user.user_id === linkedUserId));
   const saving = savingUserId !== null;
+  // 画面では管理者 → 一般ユーザーの順に，見出しを付けて分けて並べる
+  const userGroups = [
+    { label: "管理者", headingId: "admin-users-admins", users: users.filter((user) => user.is_admin) },
+    { label: "一般ユーザー", headingId: "admin-users-members", users: users.filter((user) => !user.is_admin) },
+  ];
 
   useEffect(() => {
     // ページを開いたら、画面の下の方にある行でも見つけやすくする。
@@ -120,7 +125,7 @@ export default function AdminUsers({ currentUserId, linkedUserId, isAdmin, roleC
   if (!isAdmin) return <ErrorMessage message="管理者権限が必要です。" />;
 
   return (
-    <section className="h-full overflow-y-auto bg-rose-50">
+    <section className="h-full overflow-y-auto">
       <div className="mx-auto max-w-3xl px-4 py-6 sm:px-6">
         <h1 className="mb-4 text-xl font-bold text-slate-800">ユーザー管理</h1>
         {!loading && result.linkMessage && (
@@ -142,40 +147,59 @@ export default function AdminUsers({ currentUserId, linkedUserId, isAdmin, roleC
         ) : users.length === 0 ? (
           <p className="text-sm text-slate-600">このページにユーザーはいません。</p>
         ) : (
-          <ul className="divide-y divide-rose-100 rounded-lg border border-rose-100 bg-white">
-            {users.map((user) => {
-              const actionLabel = user.is_admin ? "管理者を解除" : "管理者にする";
-              const isLinkedUser = user.user_id === linkedUserId;
-              return (
-                <li
-                  key={user.user_id}
-                  ref={isLinkedUser ? linkedUserRef : null}
-                  tabIndex={isLinkedUser ? -1 : undefined}
-                  className={`flex flex-wrap items-center justify-between gap-3 px-4 py-3 ${isLinkedUser ? "bg-rose-50 ring-2 ring-inset ring-rose-400" : ""}`}
-                >
-                  <div className="w-full min-w-0 sm:w-auto sm:flex-1">
-                    <p className="break-all font-medium text-slate-800">
-                      {user.github_username || "GitHub ユーザー名なし"}
-                      {user.user_id === currentUserId && <span className="ml-2 text-xs text-slate-500">自分</span>}
-                      {isLinkedUser && <span className="ml-2 text-xs text-rose-700">選択中のユーザー</span>}
-                    </p>
-                    <p className="break-all text-sm text-slate-600">{user.email || "メールアドレス未登録"}</p>
-                    <p className="break-all text-xs text-slate-500">{user.user_id}</p>
-                  </div>
-                  <span className="text-sm text-slate-600">{user.is_admin ? "管理者" : "一般ユーザー"}</span>
-                  <button
-                    type="button"
-                    className={buttonClass}
-                    aria-label={`${user.email || user.user_id} を${user.is_admin ? "一般ユーザーにする" : "管理者にする"}`}
-                    disabled={saving}
-                    onClick={() => changeAdminRole(user)}
-                  >
-                    {savingUserId === user.user_id ? "保存中…" : actionLabel}
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
+          // 管理者と一般ユーザーを分けて並べる（誰が管理者かを一目で確かめられるように）．
+          // 分けているのは「このページに取得した分」だけ．ユーザーが1ページ（50人）を超えると，
+          // 次のページにも管理者がいることがある（一覧の並び順は Supabase 側で登録日の新しい順に決めている）．
+          <div className="space-y-6">
+            {userGroups.map((group) => (
+              <section key={group.label} aria-labelledby={group.headingId}>
+                <h2 id={group.headingId} className="mb-2 text-sm font-bold text-sub">
+                  {group.label}
+                  <span className="ml-2 font-normal">{group.users.length}人</span>
+                </h2>
+                {group.users.length === 0 ? (
+                  <p className="text-sm text-slate-600">このページに{group.label}はいません。</p>
+                ) : (
+                  <ul className="space-y-2">
+                    {group.users.map((user) => {
+                      const actionLabel = user.is_admin ? "管理者を解除" : "管理者にする";
+                      const isLinkedUser = user.user_id === linkedUserId;
+                      return (
+                        // 他の管理ページと同じく，1件ごとに白い枠で区切る．
+                        // ただしユーザーには「開く先」が無く，押せるのは権限を変えるボタンだけなので，
+                        // 枠全体は押せるようにしていない（枠のどこかに触れただけで権限が変わると危ないため）．
+                        <li
+                          key={user.user_id}
+                          ref={isLinkedUser ? linkedUserRef : null}
+                          tabIndex={isLinkedUser ? -1 : undefined}
+                          className={`flex flex-wrap items-center justify-between gap-3 rounded-lg border px-4 py-3 ${isLinkedUser ? "border-accent bg-accent-soft ring-2 ring-inset ring-accent" : "border-line bg-surface"}`}
+                        >
+                          <div className="w-full min-w-0 sm:w-auto sm:flex-1">
+                            <p className="break-all font-medium text-slate-800">
+                              {user.github_username || "GitHub ユーザー名なし"}
+                              {user.user_id === currentUserId && <span className="ml-2 text-xs text-slate-500">自分</span>}
+                              {isLinkedUser && <span className="ml-2 text-xs text-accent-strong">選択中のユーザー</span>}
+                            </p>
+                            <p className="break-all text-sm text-slate-600">{user.email || "メールアドレス未登録"}</p>
+                            <p className="break-all text-xs text-slate-500">{user.user_id}</p>
+                          </div>
+                          <button
+                            type="button"
+                            className={buttonClass}
+                            aria-label={`${user.email || user.user_id} を${user.is_admin ? "一般ユーザーにする" : "管理者にする"}`}
+                            disabled={saving}
+                            onClick={() => changeAdminRole(user)}
+                          >
+                            {savingUserId === user.user_id ? "保存中…" : actionLabel}
+                          </button>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+              </section>
+            ))}
+          </div>
         )}
         {(pageNumber > 0 || hasNextPage) && (
           <nav aria-label="ユーザー一覧のページ" className="mt-4 flex items-center gap-3">

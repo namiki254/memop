@@ -1,25 +1,18 @@
-import { Link } from "react-router-dom";
+import HomeLink from "../components/HomeLink.jsx";
 
 export default function NotFound() {
   return (
-    <div className="grid h-full min-h-[28rem] place-items-center px-4 text-center">
+    <div className="grid h-full min-h-80 place-items-center px-4 text-center">
       <div>
-        <h1 className="text-8xl font-black text-[#F47281] sm:text-9xl">
-        🥺🥺🥺 <br />
-        🥺 404 🥺 <br />
-        🥺🥺🥺
+        <p className="text-sm font-bold tracking-widest text-faint">404</p>
+        <h1 className="mt-2 text-xl font-bold text-ink">
+          ページが見つかりません
         </h1>
+        <p className="mt-2 text-sm text-sub">
+          URLが変わったか、削除された可能性があります。
+        </p>
 
-        <h2 className="mt-4 text-2xl font-black text-[#3F3A3A] sm:text-4xl">
-          Not Found
-        </h2>
-
-        <Link
-          to="/"
-          className="mt-8 inline-block rounded-full bg-[#F47281] px-6 py-3 font-bold text-white transition hover:bg-[#E95F70]"
-        >
-          トップページに戻る
-        </Link>
+        <HomeLink className="btn btn-primary mt-6" />
       </div>
     </div>
   );

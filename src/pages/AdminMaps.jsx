@@ -40,10 +40,10 @@ export default function AdminMaps({ isAdmin, roleChecked }) {
   if (!isAdmin) return <ErrorMessage message="管理者権限が必要です。" />;
 
   const maps = result?.data?.slice(0, PAGE_SIZE) ?? [];
-  const pageButton = "rounded-md border border-rose-200 px-3 py-2 text-sm text-rose-700 disabled:opacity-40";
+  const pageButton = "btn btn-sm";
 
   return (
-    <section className="h-full overflow-y-auto bg-rose-50">
+    <section className="h-full overflow-y-auto">
       <div className="mx-auto max-w-3xl px-4 py-6 sm:px-6">
         <h1 className="mb-4 text-xl font-bold text-slate-800">マップ管理</h1>
         {result?.page !== page ? (
@@ -53,12 +53,19 @@ export default function AdminMaps({ isAdmin, roleChecked }) {
         ) : maps.length === 0 ? (
           <p className="text-sm text-slate-600">このページにマップはありません。</p>
         ) : (
-          <ul className="divide-y divide-rose-100 rounded-lg border border-rose-100 bg-white">
+          <ul className="space-y-2">
             {maps.map((map) => (
-              <li key={map.id}>
+              // マップ1件ごとに白い枠で区切り，枠のどこを押してもそのマップを開けるようにする．
+              // 仕組み：マップへのリンクに付けた透明な面（after:）を，枠いっぱいに広げて重ねている．
+              // 作成者のリンクだけは relative z-10 でその面より手前に出して，別々に押せるようにしている
+              // （リンクの中にリンクを入れることはできないため，この形にしている）．
+              <li
+                key={map.id}
+                className="relative rounded-lg border border-line bg-surface transition-colors hover:border-line-strong hover:bg-paper"
+              >
                 <Link
                   to={`/maps/${map.id}`}
-                  className="flex items-center justify-between gap-3 px-4 py-3 hover:bg-rose-50"
+                  className="flex items-center justify-between gap-3 px-4 py-3 after:absolute after:inset-0 after:rounded-lg"
                 >
                   <span className="min-w-0 break-words font-medium text-slate-800">{map.title}</span>
                   <span className="shrink-0 text-xs text-slate-600">{getMapVisibilityLabel(map)}</span>
@@ -67,7 +74,7 @@ export default function AdminMaps({ isAdmin, roleChecked }) {
                   作成者　{map.user_id ? (
                     <Link
                       to={`/admin/users?${new URLSearchParams({ user: map.user_id })}`}
-                      className="text-rose-700 underline underline-offset-2"
+                      className="relative z-10 text-accent-strong underline underline-offset-2"
                       title="ユーザー管理で作成者を開く"
                     >
                       {map.creator_username ? `@${map.creator_username}` : map.user_id}

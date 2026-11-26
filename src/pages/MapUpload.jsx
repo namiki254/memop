@@ -1,10 +1,12 @@
 import MapVisibilitySelect from "../components/MapVisibilitySelect.jsx";
+import Icon from "../components/Icon.jsx";
 import { mapVisibilityValues } from "../lib/mapVisibility.js";
 import { getMapCreationErrorMessage, isMapVisibilityMissing, MAP_VISIBILITY_NOT_READY_MESSAGE } from "../lib/mapCreationErrors.js";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import { MAP_IMAGE_BUCKET } from "../lib/mapImages";
+import { compressImage } from "../lib/imageCompression.js";
 import ErrorMessage from "../components/ErrorMessage";
 
 /**
@@ -39,9 +41,15 @@ const EXTENSION_BY_SUFFIX = {
   gif: "gif",
 };
 
-// 10MB. 画像の縮小処理は入れない方針なので，代わりに入口で大きすぎるものを断る．
+// 10MB. 選べる元画像の上限．
+// PNG・JPEG は保存する前にブラウザの中で軽くする（lib/imageCompression.js）が，
+// GIF・WebP や，軽くできなかった画像は元のまま保存されるので，入口の上限は残している．
 // 上げた画像は閲覧のたびに転送されるので，Supabase の無料枠（転送量）を守るための上限でもある．
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
+
+// ファイル選択の画面で選べる種類．image/* にせず列挙しておくと，
+// iPhone は HEIC の写真を JPEG に変換して渡してくれる（HEIC のままだとここでは使えない）．
+const ACCEPTED_IMAGE_TYPES = Object.keys(EXTENSION_BY_TYPE).join(",");
 
 /**
  * 受け付けられる画像なら保存用の拡張子を返す．対象外なら null を返す．
@@ -72,13 +80,13 @@ function imageExtensionOf(file) {
  * `npm run dev -- --host` してスマホから http://192.168.x.x:5173 を開くと
  * 存在しないので，その場合に備えて代わりの作り方を用意しておく．
  */
-function makeFileName(file) {
+function makeFileName(extension) {
   const id =
     typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
       ? crypto.randomUUID()
       : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
-  return `${id}.${imageExtensionOf(file) ?? "bin"}`;
+  return `${id}.${extension ?? "bin"}`;
 }
 
 export default function MapUpload() {
@@ -92,6 +100,9 @@ export default function MapUpload() {
   const [file, setFile] = useState(null);
   const [previewUrl, setPreviewUrl] = useState(null);
   const [submitting, setSubmitting] = useState(false);
+  // 送信中のどの段階か．ボタンの文言を変えて，待っている理由が分かるようにする．
+  // "optimizing"（画像を軽くしている） → "uploading"（送っている）
+  const [submitStage, setSubmitStage] = useState("uploading");
   const [error, setError] = useState("");
 
   // プレビューの表示に成功したかどうか．
@@ -185,6 +196,7 @@ export default function MapUpload() {
     }
 
     setSubmitting(true);
+    setSubmitStage("uploading");
     setError("");
 
     // try / finally で囲むのは必須．
@@ -211,15 +223,21 @@ export default function MapUpload() {
         return;
       }
 
+      // 保存する前に画像を軽くする（長辺を縮めて WebP に変換）．
+      // 軽くできなかった場合は，元のファイルがそのまま返ってくる．
+      setSubmitStage("optimizing");
+      const image = await compressImage(file, imageExtensionOf(file));
+      setSubmitStage("uploading");
+
       // ファイル名は毎回変える．同じ名前で上げると，上書きではなく
       // 「すでに存在します」というエラーになって失敗するため．
-      const path = makeFileName(file);
+      const path = makeFileName(image.extension);
 
       // 1. Storage へアップロード
       //    公開範囲が変更されることがあるため、長期キャッシュを付けない．
       const { error: uploadError } = await supabase.storage
         .from(MAP_IMAGE_BUCKET)
-        .upload(path, file, { cacheControl: "0" });
+        .upload(path, image.blob, { cacheControl: "0" });
 
       if (uploadError) {
         console.error("画像のアップロードに失敗", uploadError);
@@ -276,17 +294,18 @@ export default function MapUpload() {
     title.trim() !== "" && file !== null && imageReady && !submitting;
 
   return (
-    <div className="h-full overflow-auto p-6">
-      <h2 className="text-2xl font-bold text-slate-800">新しいマップを作る</h2>
-      <p className="mt-1 text-sm text-slate-500">
+    <div className="h-full overflow-auto">
+      <div className="mx-auto w-full max-w-xl px-4 py-4 sm:px-6 sm:py-8">
+      <h2 className="text-xl font-bold text-ink">新しいマップを作る</h2>
+      <p className="mt-1 text-sm text-sub">
         好きな画像をアップロードすると，その画像がそのまま地図になります．
       </p>
 
-      <form onSubmit={handleSubmit} className="mt-6 max-w-xl space-y-5">
+      <form onSubmit={handleSubmit} className="mt-5 space-y-5">
         <div>
           <label
             htmlFor="title"
-            className="block text-sm font-medium text-slate-700"
+            className="label"
           >
             タイトル
           </label>
@@ -299,14 +318,14 @@ export default function MapUpload() {
             disabled={submitting}
             maxLength={100}
             placeholder="例：大学の構内マップ"
-            className="mt-1 w-full rounded border border-slate-300 px-3 py-2 disabled:bg-slate-100"
+            className="field mt-1"
           />
         </div>
 
         <div>
           <label
             htmlFor="description"
-            className="block text-sm font-medium text-slate-700"
+            className="label"
           >
             説明（任意）
           </label>
@@ -318,58 +337,49 @@ export default function MapUpload() {
             maxLength={500}
             rows={3}
             placeholder="どんなマップかを書いておくと，あとで分かりやすくなります．"
-            className="mt-1 w-full rounded border border-slate-300 px-3 py-2 disabled:bg-slate-100"
+            className="field mt-1"
           />
         </div>
 
         <MapVisibilitySelect id="mapVisibility" value={visibility} onChange={setVisibility} disabled={submitting} />
 
         <div>
-          <p className="text-sm font-bold text-[#685F5D]">
+          <p className="label">
             マップにする画像
           </p>
 
-          <div className="mt-2 rounded-2xl border-2 border-dashed border-rose-200 bg-rose-50/40 p-4 text-center">
+          <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border border-dashed border-line-strong bg-surface p-3">
             <input
               id="image"
               ref={fileInputRef}
               type="file"
-              accept="image/*"
+              accept={ACCEPTED_IMAGE_TYPES}
               onChange={handleFileChange}
               disabled={submitting}
-              className="sr-only"
+              className="peer sr-only"
             />
 
             <label
               htmlFor="image"
-              className={`inline-flex items-center justify-center gap-2 rounded-full bg-[#F47281] px-5 py-2.5 text-sm font-bold text-white shadow-sm transition ${submitting
-                ? "cursor-not-allowed opacity-50"
-                : "cursor-pointer hover:bg-[#E95F70] hover:shadow-md"
-                }`}
+              className={`btn peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-accent ${submitting ? "pointer-events-none opacity-50" : ""}`}
             >
-              <span aria-hidden="true">🖼️</span>
-              {file ? "別の画像を選ぶ" : "画像ファイルを選ぶ"}
+              <Icon name="image" />
+              {file ? "別の画像を選ぶ" : "画像を選ぶ"}
             </label>
 
-            <p className="mt-3 break-all text-sm text-[#817878]">
-              {file ? (
-                <>
-                  <span aria-hidden="true">📎</span> {file.name}
-                </>
-              ) : (
-                "まだ画像は選択されていません"
-              )}
+            <p className="min-w-0 break-all text-sm text-sub">
+              {file ? file.name : "まだ選択されていません"}
             </p>
           </div>
 
-          <p className="mt-1.5 text-xs text-[#9A908D]">
-            PNG・JPEG・WebP・GIF、10MBまで
+          <p className="mt-1.5 text-xs text-faint">
+            PNG・JPEG・WebP・GIF、10MBまで。
           </p>
         </div>
 
         {previewUrl && (
           <div>
-            <p className="text-sm font-medium text-slate-700">プレビュー</p>
+            <p className="label">プレビュー</p>
             <img
               src={previewUrl}
               alt="選択した画像のプレビュー"
@@ -383,26 +393,30 @@ export default function MapUpload() {
                   "この画像は表示できませんでした．ファイルが壊れているか，画素数が大きすぎるかもしれません．",
                 );
               }}
-              className="mt-1 max-h-80 w-full rounded border border-slate-200 object-contain"
+              className="mt-1 max-h-80 w-full rounded-lg border border-line bg-surface object-contain"
             />
           </div>
         )}
 
         {/* エラーは送信ボタンのすぐ上に出す．画面の一番上に出すと，
             プレビューでスクロールしたときに視界から外れて気づけない． */}
-        {error && <ErrorMessage message={error} />}
+        {error && <ErrorMessage message={error} className="" />}
 
         <div>
           <button
             type="submit"
             disabled={!canSubmit}
-            className="rounded bg-slate-800 px-4 py-2 text-white disabled:cursor-not-allowed disabled:bg-slate-300"
+            className="btn btn-primary w-full sm:w-auto sm:px-6"
           >
-            {submitting ? "アップロード中..." : "このマップを作る"}
+            {!submitting
+              ? "このマップを作る"
+              : submitStage === "optimizing"
+                ? "画像を軽くしています…"
+                : "アップロード中…"}
           </button>
 
           {!submitting && !canSubmit && (
-            <p className="mt-2 text-sm text-slate-500">
+            <p className="mt-2 text-sm text-sub">
               {file && !imageReady
                 ? "画像を読み込んでいます．表示できたら送信できます．"
                 : "タイトルと画像の両方を入れると送信できます．"}
@@ -410,6 +424,7 @@ export default function MapUpload() {
           )}
         </div>
       </form>
+      </div>
     </div>
   );
 }

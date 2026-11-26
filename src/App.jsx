@@ -16,6 +16,10 @@ import AdminComments from "./pages/AdminComments.jsx";
 import Loading from "./components/Loading.jsx";
 import { useMapAccess } from "./lib/mapAccess.js";
 import AuthButton from "./components/AuthButton.jsx";
+import Icon from "./components/Icon.jsx";
+import ToastHost from "./components/Toast.jsx";
+import { showToast } from "./lib/toast.js";
+import { useKeyboardViewport } from "./lib/useKeyboardViewport.js";
 // issue #28 用のテストページ追加
 import TestMapView from "./pages/TestMapView.jsx";
 import NotFound from "./pages/NotFound.jsx";
@@ -39,6 +43,11 @@ export default function App() {
   const mapShareToken = searchParams.get("share");
   const linkedUserId = searchParams.get("user")?.toLowerCase() ?? null;
   const { currentUser, authChecked, roleChecked, isAdmin, refreshRole } = useMapAccess();
+  // スマホでキーボードが出ている間，下に固定した入力欄やボタンが隠れないよう高さを合わせる
+  useKeyboardViewport();
+  // マップ詳細（/maps/:id）かどうか．スマホでは地図を広く見せたいので，このヘッダーを出さない．
+  // 戻る・ログインは，詳細ページ側の見出しの行に置いてある（MapDetail.jsx）．
+  const isMapDetail = /^\/maps\/(?!new\/?$)[^/]+\/?$/.test(location.pathname);
   const accessKey = JSON.stringify([currentUser?.id, isAdmin]);
   const mapList = (
     <MapList
@@ -63,79 +72,62 @@ export default function App() {
     } = await supabase.auth.getUser();
 
     if (!user) {
-      alert("新しいマップを作るにはログインしてください");
+      showToast("新しいマップを作るにはログインしてください。", { tone: "error" });
       return;
     }
 
     navigate(newMapHref);
   }
 
+  const adminLinks = [
+    ["/admin/maps", "マップ管理"],
+    ["/admin/folders", "フォルダ管理"],
+    ["/admin/users", "ユーザー管理"],
+    ["/admin/comments", "コメント管理"],
+  ];
+
   return (
-    <div className="flex h-screen w-full min-w-0 max-w-full flex-col overflow-x-hidden">
-      <header
-        className="
-          flex min-w-0 flex-wrap items-center gap-2
-          border-b border-rose-100
-          bg-white/90
-          px-4 py-3
-          shadow-sm
-          backdrop-blur
-          sm:gap-6
-          sm:px-6
-        "
-      >
+    <div className="flex h-[var(--app-height,100dvh)] w-full min-w-0 max-w-full flex-col overflow-x-hidden">
+      <ToastHost />
+      <header className={`relative z-40 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 border-b border-line bg-surface px-4 py-2 sm:gap-x-3 sm:px-6 ${isMapDetail ? "max-sm:hidden" : ""}`}>
         <Link
           to="/"
-          className="
-            mr-auto
-            shrink-0
-            whitespace-nowrap
-            text-xl font-black
-            tracking-tight
-            text-rose-400
-            sm:text-2xl
-          "
+          className="mr-auto shrink-0 whitespace-nowrap py-1 text-xl font-black tracking-tight text-rose-400 sm:text-2xl"
         >
           めもっぷ
         </Link>
-        <button
-          type="button"
-          onClick={handleNewMap}
-          className="
-            shrink-0
-            whitespace-nowrap
-            rounded-full
-            bg-rose-400
-            px-3 py-2
-            text-sm font-bold
-            text-white
-            shadow-sm
-            transition
-            hover:-translate-y-0.5
-            hover:bg-rose-500
-            hover:shadow-md
-            sm:px-4
-          "
-        >
-          新しいマップ
-        </button>
+
+        {/* 管理者向けの移動先．スマホでは2段目に回し，はみ出す分は横スクロールで見せる． */}
         {isAdmin && (
-          <>
-            <Link to="/admin/maps" className="rounded-md px-3 py-2 text-sm font-semibold text-rose-700 hover:bg-rose-50">
-              マップ管理
-            </Link>
-            <Link to="/admin/folders" className="rounded-md px-3 py-2 text-sm font-semibold text-rose-700 hover:bg-rose-50">
-              フォルダ管理
-            </Link>
-            <Link to="/admin/users" className="rounded-md px-3 py-2 text-sm font-semibold text-rose-700 hover:bg-rose-50">
-              ユーザー管理
-            </Link>
-            <Link to="/admin/comments" className="rounded-md px-3 py-2 text-sm font-semibold text-rose-700 hover:bg-rose-50">
-              コメント管理
-            </Link>
-          </>
+          <nav
+            aria-label="管理"
+            className="order-last -mx-1 flex basis-full gap-1 overflow-x-auto lg:order-none lg:mx-0 lg:basis-auto"
+          >
+            {adminLinks.map(([to, label]) => (
+              <Link
+                key={to}
+                to={to}
+                aria-current={location.pathname === to ? "page" : undefined}
+                className={`shrink-0 whitespace-nowrap rounded-lg px-2.5 py-2 text-sm ${location.pathname === to
+                  ? "bg-ink/5 font-bold text-ink"
+                  : "text-sub hover:bg-ink/5 hover:text-ink"
+                  }`}
+              >
+                {label}
+              </Link>
+            ))}
+          </nav>
         )}
-        <AuthButton />
+
+        {/* 作成にはログインが要るので，未ログインのときはボタンを出さない */}
+        {currentUser && (
+          <button type="button" onClick={handleNewMap} className="btn btn-primary">
+            <Icon name="plus" />
+            新しいマップ
+          </button>
+        )}
+        {/* 未ログインのトップは画面中央にログイン欄があるので，ヘッダーには重ねて出さない */}
+        {!(authChecked && !currentUser && location.pathname === "/") && <AuthButton />}
       </header>
 
       <main className="min-h-0 min-w-0 flex-1 overflow-x-hidden">

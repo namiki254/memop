@@ -44,7 +44,13 @@ export function useMapImage(imageUrl, lazy = false) {
           observer.disconnect();
           loadImage();
         },
-        { rootMargin: "160px" },
+        {
+          // 一覧はページ全体ではなく中の箱（data-scroll-root）がスクロールする。
+          // その箱を基準にしないと rootMargin が効かず、画面に入ってから読み込み始めることになる。
+          // 画面の少し手前（400px）で読み込みを始めて、スクロールしたときにはもう表示できているようにする。
+          root: imageContainer.current.closest("[data-scroll-root]"),
+          rootMargin: "400px 0px",
+        },
       );
       observer.observe(imageContainer.current);
     } else {

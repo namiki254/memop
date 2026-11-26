@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { supabase } from "../lib/supabase";
 import { notifySavedMapsChanged, subscribeSavedMapsChanged } from "../lib/savedMaps.js";
-import { MenuItem } from "./ThreeDotMenu.jsx";
+import Icon from "./Icon.jsx";
+import { showToast } from "../lib/toast.js";
 
 const SAVE_TARGETS = {
     map: {
@@ -20,8 +21,8 @@ export default function SaveToMyListButton({
     ownerId,
     currentUser,
     onSavedChange,
+    // "button"：文字のボタン（マップ詳細・フォルダ）．"icon"：ブックマークのアイコンだけ（一覧のカード）
     variant = "button",
-    hideWhenSaved = false,
 }) {
     const [saved, setSaved] = useState(false);
     const [checkingSaved, setCheckingSaved] = useState(false);
@@ -134,6 +135,7 @@ export default function SaveToMyListButton({
             if (error) {
                 console.error("保存に失敗", error);
                 setSaveError(`保存に失敗しました。${error.message}`);
+                if (variant === "icon") showToast(removing ? "保存を解除できませんでした。" : "一覧に保存できませんでした。", { tone: "error" });
                 return;
             }
 
@@ -149,6 +151,7 @@ export default function SaveToMyListButton({
                 `予期しないエラーが発生しました。${unexpectedError?.message ?? unexpectedError
                 }`,
             );
+            if (variant === "icon") showToast("保存できませんでした。もう一度お試しください。", { tone: "error" });
         } finally {
             setSaving(false);
         }
@@ -157,8 +160,6 @@ export default function SaveToMyListButton({
     if (!target || !itemId || isOwner) {
         return null;
     }
-    if (variant === "menu" && (checkingSaved || !saved || itemType !== "map")) return null;
-    if (hideWhenSaved && saved && itemType === "map") return null;
 
     let buttonLabel = "自分のマップ一覧に保存";
 
@@ -170,29 +171,41 @@ export default function SaveToMyListButton({
         buttonLabel = itemType === "map" ? "保存解除" : "保存済み";
     }
 
+    // アイコンだけのブックマークボタン（一覧のカード用．X のブックマークと同じく，押すたびに保存と解除が切り替わる）．
+    // 保存済みは塗りつぶし．カードには文言を出す場所がないので，失敗したときは画面上部の通知で伝える．
+    if (variant === "icon") {
+        if (itemType !== "map") return null;
+        const iconLabel = saved ? "自分のマップ一覧から保存を解除" : "自分のマップ一覧に保存";
+        return (
+            <button
+                type="button"
+                onClick={handleSave}
+                disabled={checkingSaved || saving}
+                aria-pressed={saved}
+                aria-label={iconLabel}
+                title={saved ? "保存を解除" : "一覧に保存"}
+                className={`btn-icon ${saved ? "text-ink" : "text-line-strong hover:text-sub"}`}
+            >
+                <Icon name="bookmark" filled={saved} className="size-5" />
+            </button>
+        );
+    }
+
     return (
-        <div className={variant === "menu" ? "relative w-full" : "relative flex items-center"}>
-            {variant === "menu" ? (
-                <MenuItem onClick={handleSave} disabled={saving}>
-                    {buttonLabel}
-                </MenuItem>
-            ) : <button
+        <div className="relative flex items-center">
+            <button
                 type="button"
                 onClick={handleSave}
                 disabled={checkingSaved || saving || (saved && itemType !== "map")}
-                className={
-                    saved
-                        ? "rounded-md bg-slate-200 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-300 disabled:opacity-50"
-                        : "rounded-md bg-rose-500 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-rose-600 disabled:cursor-not-allowed disabled:bg-slate-300"
-                }
+                className={saved ? "btn btn-sm" : "btn btn-sm btn-primary"}
             >
                 {buttonLabel}
-            </button>}
+            </button>
 
             {saveError && (
                 <p
                     role="alert"
-                    className="absolute right-0 top-full z-20 mt-2 w-72 max-w-[80vw] rounded bg-red-50 px-3 py-2 text-sm text-red-700 shadow-md"
+                    className="notice-error absolute right-0 top-full z-20 mt-2 w-72 max-w-[80vw] shadow-md"
                 >
                     {saveError}
                 </p>
