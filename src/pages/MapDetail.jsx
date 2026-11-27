@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { supabase } from "../lib/supabase";
+import { canManageContent } from "../lib/mapAccess";
 import Loading from "../components/Loading";
 import ErrorMessage from "../components/ErrorMessage";
 import { MapView } from "../components/MapView";
@@ -24,17 +25,19 @@ const MAP_BUTTON_FILTER = "kind:button";
  * 画像をクリックすると新しいピンを作れるようにする．
  */
 
-export default function MapDetail() {
+export default function MapDetail({ currentUser, isAdmin }) {
   // /maps/:id の :id を取得する
   const { id } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const requestedPinId = searchParams.get("pin");
+  const requestedCommentId = searchParams.get("comment");
   // Supabaseから取得したデータを保存する
   const [map, setMap] = useState(null);
   // マップが入っているフォルダの階層を保存する
   const [breadcrumb, setBreadcrumb] = useState([]);
   const [pins, setPins] = useState([]);
-  // 現在ログインしているユーザーを保存する
-  const [currentUser, setCurrentUser] = useState(null);
   // 画面の状態
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -43,6 +46,7 @@ export default function MapDetail() {
   // 既存のピンを見ているときは pins の1件，新しく作るときは { x, y } だけの仮の値．
   // null のときはパネルを出さない．
   const [selectedPin, setSelectedPin] = useState(null);
+  const requestedPinMissing = requestedPinId && !pins.some((pin) => String(pin.id) === requestedPinId);
 
   const [pendingPinAppearance, setPendingPinAppearance] = useState({
     kind: "pin",
@@ -68,29 +72,14 @@ export default function MapDetail() {
   // ボタン種類のピン（#67）の移動先として選べる，全マップの一覧．
   const [allMaps, setAllMaps] = useState([]);
   const [mapOptionFolders, setMapOptionFolders] = useState([]);
-  // 今ログインしている人が，このマップの作成者かどうか（削除の許可判定に使う）
-  const isMapOwner = currentUser?.id === map?.user_id;
-  const isUnownedMap = map?.user_id === null;
-
   const [isPinListOpen, setIsPinListOpen] = useState(false);
-
-  // 持ち主なしマップは誰でも編集できる仕様だが，未ログインの匿名ユーザーには許可しない．
-  const canEditMap =
-    isMapOwner || (isUnownedMap && Boolean(currentUser));
+  const canEditMap = canManageContent(map, currentUser?.id, isAdmin);
 
   function handlePinListClick(pin) {
     setPinError("");
     setIsEditingPin(false);
     setSelectedPin(pin);
     setIsPinListOpen(false);
-  }
-
-  // ピンの編集・削除ができるか（持ち主なしピンはログイン済みなら誰でも）．
-  // userId は呼び出し側で supabase.auth.getUser() から取り直した最新の値を渡す．
-  function canEditPin(pin, userId) {
-    if (!pin) return false;
-    if (pin.user_id === null) return Boolean(userId);
-    return userId === pin.user_id;
   }
 
   // マップ自体（タイトル・説明）の編集
@@ -335,18 +324,36 @@ export default function MapDetail() {
         throw pinError;
       }
 
+      const mapPins = pinData ?? [];
+      if (requestedPinId) {
+        // 一覧の取得件数に上限があっても、リンク先のピンを同じマップ内で探す。
+        let linkedPin = mapPins.find((pin) => String(pin.id) === requestedPinId);
+        if (!linkedPin) {
+          const { data, error: linkedPinError } = await supabase
+            .from("pins")
+            .select("*")
+            .eq("map_id", id)
+            .eq("id", requestedPinId)
+            .maybeSingle();
+          if (linkedPinError && linkedPinError.code !== "22P02") throw linkedPinError;
+          linkedPin = data;
+          if (linkedPin) mapPins.push(linkedPin);
+        }
+        setSelectedPin(linkedPin ?? null);
+      }
+
       // 3. 取得したデータをstateへ保存
       setMap(mapData);
       setMapTitle(mapData.title);
       setMapDescription(mapData.description ?? "");
       setMapIsPublic(mapData.is_public ?? true); // 追加
-      setPins(pinData ?? []);
+      setPins(mapPins);
     } catch (fetchError) {
       setError(fetchError);
     } finally {
       setLoading(false);
     }
-  }, [id]);
+  }, [id, requestedPinId]);
 
   useEffect(() => {
     loadMapDetail();
@@ -474,55 +481,6 @@ export default function MapDetail() {
 
     loadMapOptions();
   }, []);
-  // 現在ログインしているユーザーを取得する
-  useEffect(() => {
-    async function loadCurrentUser() {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-
-      setCurrentUser(user);
-    }
-
-
-    loadCurrentUser();
-
-    //ログイン状態の監視
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, newSession) => {
-      const newUser = newSession?.user ?? null;
-      setCurrentUser(newUser);
-
-      // ログアウト時の処理
-      if (!newUser) {
-        setSelectedPin(null);
-        setIsEditingPin(false);
-
-        // 「自分のピンのみ表示」はログイン中の自分を基準にした絞り込みなので，
-        // ログアウト後もオンのままだと全ピンが消え，オフにする手段（チェックボックス）も
-        // ログイン中しか出ないため，復旧できなくなってしまう．
-        setShowOnlyMyPins(false);
-
-        // 非公開マップを閲覧中だった場合、画面を非表示にする
-        setMap((currentMap) => {
-          if (currentMap && !currentMap.is_public) {
-            // リダイレクトせず「マップが見つかりません」画面にする
-            return null;
-          }
-          return currentMap;
-        });
-      }
-    });
-
-    //ページを離れたら監視を中止
-    return () => {
-      subscription.unsubscribe();
-    };
-
-  }, []);
-
-
 
   // 他の人が置いた・書き直した・消したピンを，リロードなしで反映する．
   //
@@ -617,15 +575,11 @@ export default function MapDetail() {
 
     const { data: targetMap, error: targetMapError } = await supabase
       .from("maps")
-      .select("id, is_public")
+      .select("id")
       .eq("id", linkMapId)
       .maybeSingle();
 
-    if (
-      targetMapError ||
-      !targetMap ||
-      !targetMap.is_public
-    ) {
+    if (targetMapError || !targetMap) {
       setPinError(
         "移動先のマップが存在しないか、非公開に変更されたため移動できません．",
       );
@@ -642,6 +596,17 @@ export default function MapDetail() {
     setSelectedPin(null);
     setIsEditingPin(false);
     setPinError("");
+  }
+
+  function clearDeletedCommentLink(commentId) {
+    if (String(commentId) !== requestedCommentId) return;
+    // 削除中に別のページに移った場合は、そのページのURLを書き換えない。
+    if (window.location.pathname !== location.pathname || window.location.search !== location.search) return;
+
+    // 対象コメントへの指定だけを外し、ピンは開いたままにする。
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.delete("comment");
+    setSearchParams(nextParams, { replace: true });
   }
 
   // コピー処理を追加
@@ -670,7 +635,7 @@ export default function MapDetail() {
     event.preventDefault();
     if (savingMap) return;
     if (!canEditMap) {
-      setMapError("マップを編集できるのは作成者だけです．");
+      setMapError("このマップは編集できません．");
       return;
     }
     const trimmedTitle = mapTitle.trim();
@@ -680,20 +645,14 @@ export default function MapDetail() {
     setMapError("");
 
     try {
-      // RLSに加えて，クライアント側でも所有者条件を絞り込んでおく（多層防御）．
-      let updateQuery = supabase
+      const { data: updated, error: updateError } = await supabase
         .from("maps")
         .update({
           title: trimmedTitle,
           description: mapDescription.trim(),
           is_public: mapIsPublic,   // 追加
         })
-        .eq("id", id);
-      updateQuery = isUnownedMap
-        ? updateQuery.is("user_id", null)
-        : updateQuery.eq("user_id", currentUser.id);
-
-      const { data: updated, error: updateError } = await updateQuery
+        .eq("id", id)
         .select()
         .single();
 
@@ -715,12 +674,12 @@ export default function MapDetail() {
     }
   }
 
-  /** マップを削除する（pinsはon delete cascadeで一緒に消える）．作成者だけが実行できる． */
+  /** マップを削除する（pinsはon delete cascadeで一緒に消える）． */
   async function handleDeleteMap() {
     if (savingMap) return;
 
     if (!canEditMap) {
-      setMapError("マップを削除できるのは作成者だけです．");
+      setMapError("このマップは削除できません．");
       return;
     }
 
@@ -736,13 +695,12 @@ export default function MapDetail() {
     setMapError("");
 
     try {
-      // RLSに加えて，クライアント側でも所有者条件を絞り込んでおく（多層防御）．
-      let deleteQuery = supabase.from("maps").delete().eq("id", id);
-      deleteQuery = isUnownedMap
-        ? deleteQuery.is("user_id", null)
-        : deleteQuery.eq("user_id", currentUser.id);
-
-      const { error: deleteError } = await deleteQuery;
+      const { data: deleted, error: deleteError } = await supabase
+        .from("maps")
+        .delete()
+        .eq("id", id)
+        .select("id")
+        .maybeSingle();
 
       if (deleteError) {
         console.error("マップの削除に失敗", deleteError);
@@ -750,7 +708,12 @@ export default function MapDetail() {
         return;
       }
 
-      navigate("/", { replace: true });
+      if (!deleted) {
+        setMapError("このマップは削除できませんでした．");
+        return;
+      }
+
+      navigate(isAdmin ? "/admin/maps" : "/", { replace: true });
     } catch (e) {
       console.error("マップの削除中に予期しないエラー", e);
       setMapError(`予期しないエラーが発生しました．${e?.message ?? e}`);
@@ -834,13 +797,13 @@ export default function MapDetail() {
         error: userError,
       } = await supabase.auth.getUser();
 
-      if (userError || !user || !canEditPin(selectedPin, user.id)) {
+      const canEdit = canManageContent(selectedPin, user?.id, isAdmin && user?.id === currentUser?.id);
+      if (userError || !canEdit) {
         setPinError("このピンは編集できません．");
         return;
       }
 
-      // RLSに加えて，クライアント側でも所有者条件を絞り込んでおく（多層防御）．
-      let updatePinQuery = supabase
+      const { data: updated, error: updateError } = await supabase
         .from("pins")
         .update({
           x: selectedPin.x,
@@ -851,13 +814,7 @@ export default function MapDetail() {
           kind,
           link_map_id: kind === "button" ? linkMapId : null,
         })
-        .eq("id", selectedPin.id);
-      updatePinQuery =
-        selectedPin.user_id === null
-          ? updatePinQuery.is("user_id", null)
-          : updatePinQuery.eq("user_id", user.id);
-
-      const { data: updated, error: updateError } = await updatePinQuery
+        .eq("id", selectedPin.id)
         .select()
         .single();
 
@@ -894,28 +851,31 @@ export default function MapDetail() {
         error: userError,
       } = await supabase.auth.getUser();
 
-      if (userError || !user || !canEditPin(selectedPin, user.id)) {
+      const canDelete = canManageContent(selectedPin, user?.id, isAdmin && user?.id === currentUser?.id);
+      if (userError || !canDelete) {
         setPinError("このピンは削除できません．");
         return;
       }
 
-      // 本人であることを確認してから削除確認を出す
       if (!window.confirm("このピンを削除しますか？")) {
         return;
       }
 
-      // RLSに加えて，クライアント側でも所有者条件を絞り込んでおく（多層防御）．
-      let deletePinQuery = supabase.from("pins").delete().eq("id", selectedPin.id);
-      deletePinQuery =
-        selectedPin.user_id === null
-          ? deletePinQuery.is("user_id", null)
-          : deletePinQuery.eq("user_id", user.id);
-
-      const { error: deleteError } = await deletePinQuery;
+      const { data: deleted, error: deleteError } = await supabase
+        .from("pins")
+        .delete()
+        .eq("id", selectedPin.id)
+        .select("id")
+        .maybeSingle();
 
       if (deleteError) {
         console.error("ピンの削除に失敗", deleteError);
         setPinError(`削除に失敗しました．${deleteError.message}`);
+        return;
+      }
+
+      if (!deleted) {
+        setPinError("このピンは削除できませんでした．");
         return;
       }
 
@@ -956,11 +916,6 @@ export default function MapDetail() {
   const backLabel = map.folder_id
     ? "フォルダに戻る"
     : "マップ一覧に戻る";
-
-  // 他人の非公開マップを除外したフォルダ内マップ一覧
-  const visibleSiblingMaps = siblingMaps.filter(
-    (sibling) => sibling.is_public || sibling.user_id === currentUser?.id,
-  );
 
   const folderById = new Map(
     mapOptionFolders.map((folder) => [folder.id, folder]),
@@ -1159,7 +1114,7 @@ export default function MapDetail() {
                   </ThreeDotMenu>
 
 
-                  {visibleSiblingMaps.length > 0 && (
+                  {siblingMaps.length > 0 && (
                     <button
                       type="button"
                       onClick={() => setSiblingMapsOpen((current) => !current)}
@@ -1168,7 +1123,7 @@ export default function MapDetail() {
                     >
                       {siblingMapsOpen
                         ? "フォルダ内マップを閉じる"
-                        : `フォルダ内マップ（${visibleSiblingMaps.length}）`}
+                        : `フォルダ内マップ（${siblingMaps.length}）`}
                     </button>
                   )}
 
@@ -1370,6 +1325,8 @@ export default function MapDetail() {
                 ? { ...selectedPin, ...pendingPinAppearance }
                 : null
             }
+            // 詳細パネルで開いているピンをマップ上でも強調する（新規ピンは id が無いので対象外）
+            selectedPinId={selectedPin?.id ?? null}
             onPinClick={handlePinClick}
             onPinDoubleClick={handlePinDoubleClick}
             onMapClick={isEditingPin ? undefined : handleMapClick}
@@ -1381,7 +1338,11 @@ export default function MapDetail() {
         {selectedPin && (
           <PinPanel
             pin={selectedPin}
+            focusedCommentId={String(selectedPin.id) === requestedPinId ? requestedCommentId : null}
+            onFocusedCommentDeleted={clearDeletedCommentLink}
             currentUser={currentUser}
+            isAdmin={isAdmin}
+            canManagePin={canManageContent(selectedPin, currentUser?.id, isAdmin)}
             saving={savingPin}
             error={pinError}
             mapOptions={destinationMapOptions}
@@ -1396,10 +1357,14 @@ export default function MapDetail() {
             onEditCancel={cancelEditingPin}
           />
         )}
+        {requestedPinMissing && (
+          <p role="status" className="absolute inset-x-4 bottom-4 z-10 rounded-md bg-white p-3 text-sm text-slate-700 shadow">
+            リンク先のピンを開けませんでした。
+          </p>
+        )}
       </div>
-      {/* 同じフォルダの他マップへの切り替え．フォルダに入っていないマップでは出さない．
-          他人の非公開マップは visibleSiblingMaps の時点で除外済み． */}
-      {siblingMapsOpen && visibleSiblingMaps.length > 0 && (
+      {/* 同じフォルダの閲覧可能なマップへの切り替え */}
+      {siblingMapsOpen && siblingMaps.length > 0 && (
         <>
           {/* スマホでは一覧の後ろを暗くする */}
           <button
@@ -1438,7 +1403,7 @@ export default function MapDetail() {
             </div>
 
             <ul className="mt-2 space-y-1">
-              {visibleSiblingMaps.map((sibling) => {
+              {siblingMaps.map((sibling) => {
                 const isActive = sibling.id === map.id;
 
                 return (

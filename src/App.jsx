@@ -9,6 +9,12 @@ import { supabase } from "./lib/supabase.js";
 import MapList from "./pages/MapList.jsx";
 import MapUpload from "./pages/MapUpload.jsx";
 import MapDetail from "./pages/MapDetail.jsx";
+import AdminMaps from "./pages/AdminMaps.jsx";
+import AdminFolders from "./pages/AdminFolders.jsx";
+import AdminUsers from "./pages/AdminUsers.jsx";
+import AdminComments from "./pages/AdminComments.jsx";
+import Loading from "./components/Loading.jsx";
+import { useMapAccess } from "./lib/mapAccess.js";
 import AuthButton from "./components/AuthButton.jsx";
 // issue #28 用のテストページ追加
 import TestMapView from "./pages/TestMapView.jsx";
@@ -28,6 +34,19 @@ import NotFound from "./pages/NotFound.jsx";
 export default function App() {
   const navigate = useNavigate();
   const location = useLocation();
+  const searchParams = new URLSearchParams(location.search);
+  const linkedPinId = searchParams.get("pin");
+  const linkedUserId = searchParams.get("user")?.toLowerCase() ?? null;
+  const { currentUser, authChecked, roleChecked, isAdmin, refreshRole } = useMapAccess();
+  const accessKey = JSON.stringify([currentUser?.id, isAdmin]);
+  const mapList = (
+    <MapList
+      key={accessKey}
+      currentUser={currentUser}
+      authChecked={authChecked}
+      isAdmin={isAdmin}
+    />
+  );
 
   // 今フォルダの中にいる場合，「新しいマップ」もそのフォルダの中に作られるようにする．
   // ヘッダーは <Routes> の外にあって :folderId を直接は受け取れないので，
@@ -60,7 +79,6 @@ export default function App() {
           px-4 py-3
           shadow-sm
           backdrop-blur
-          sm:flex-nowrap
           sm:gap-6
           sm:px-6
         "
@@ -100,15 +118,67 @@ export default function App() {
         >
           新しいマップ
         </button>
+        {isAdmin && (
+          <>
+            <Link to="/admin/maps" className="rounded-md px-3 py-2 text-sm font-semibold text-rose-700 hover:bg-rose-50">
+              マップ管理
+            </Link>
+            <Link to="/admin/folders" className="rounded-md px-3 py-2 text-sm font-semibold text-rose-700 hover:bg-rose-50">
+              フォルダ管理
+            </Link>
+            <Link to="/admin/users" className="rounded-md px-3 py-2 text-sm font-semibold text-rose-700 hover:bg-rose-50">
+              ユーザー管理
+            </Link>
+            <Link to="/admin/comments" className="rounded-md px-3 py-2 text-sm font-semibold text-rose-700 hover:bg-rose-50">
+              コメント管理
+            </Link>
+          </>
+        )}
         <AuthButton />
       </header>
 
       <main className="min-h-0 min-w-0 flex-1 overflow-x-hidden">
         <Routes>
-          <Route path="/" element={<MapList />} />
-          <Route path="/folders/:folderId" element={<MapList />} />
+          <Route path="/" element={mapList} />
+          <Route path="/folders/:folderId" element={mapList} />
           <Route path="/maps/new" element={<MapUpload />} />
-          <Route path="/maps/:id" element={<MapDetail />} />
+          <Route
+            path="/maps/:id"
+            element={authChecked ? (
+              <MapDetail
+                key={JSON.stringify([accessKey, location.pathname, linkedPinId])}
+                currentUser={currentUser}
+                isAdmin={isAdmin}
+              />
+            ) : <Loading />}
+          />
+          <Route
+            path="/admin/maps"
+            element={<AdminMaps key={accessKey} isAdmin={isAdmin} roleChecked={roleChecked} />}
+          />
+          <Route
+            path="/admin/folders"
+            element={<AdminFolders key={accessKey} isAdmin={isAdmin} roleChecked={roleChecked} refreshRole={refreshRole} />}
+          />
+          <Route
+            path="/admin/users"
+            element={
+              <AdminUsers
+                key={JSON.stringify([accessKey, linkedUserId])}
+                currentUserId={currentUser?.id}
+                linkedUserId={linkedUserId}
+                isAdmin={isAdmin}
+                roleChecked={roleChecked}
+                refreshRole={refreshRole}
+              />
+            }
+          />
+          <Route
+            path="/admin/comments"
+            element={
+              <AdminComments key={accessKey} isAdmin={isAdmin} roleChecked={roleChecked} refreshRole={refreshRole} />
+            }
+          />
           {/* issue #28 用のテストページ追加 */}
           <Route path="/test" element={<TestMapView />} />
 

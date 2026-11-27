@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "../lib/supabase";
+import { MAP_IMAGE_BUCKET } from "../lib/mapImages";
 import ErrorMessage from "../components/ErrorMessage";
 
 /**
@@ -10,13 +11,11 @@ import ErrorMessage from "../components/ErrorMessage";
  *
  * 流れは3段階．
  *   1. 画像を Supabase Storage（map-images バケット）へアップロードする
- *   2. その画像の公開URLを組み立てる
+ *   2. Storage 内の画像を参照する URL を組み立てる
  *   3. maps テーブルに1行つくり，image_url にそのURLを入れてから詳細ページへ移動する
  *
  * 画像そのものはデータベースに入れない．Storage に置いて，URLだけを保存する．
  */
-
-const BUCKET = "map-images";
 
 // 受け付ける画像の種類．
 // image/* をそのまま通すと，SVG（中にスクリプトを書ける）や，
@@ -205,11 +204,10 @@ export default function MapUpload() {
       const path = makeFileName(file);
 
       // 1. Storage へアップロード
-      //    cacheControl はブラウザに「この画像は変わらない」と伝えるためのもの．
-      //    ファイル名が毎回違うので長くしてよく，転送量の節約になる．
+      //    公開範囲が変更されることがあるため、長期キャッシュを付けない．
       const { error: uploadError } = await supabase.storage
-        .from(BUCKET)
-        .upload(path, file, { cacheControl: "31536000" });
+        .from(MAP_IMAGE_BUCKET)
+        .upload(path, file, { cacheControl: "0" });
 
       if (uploadError) {
         console.error("画像のアップロードに失敗", uploadError);
@@ -217,8 +215,8 @@ export default function MapUpload() {
         return;
       }
 
-      // 2. 公開URLを組み立てる（通信は発生しない．文字列を作るだけ）
-      const { data: urlData } = supabase.storage.from(BUCKET).getPublicUrl(path);
+      // 2. 既存の image_url と同じ形式で保存する。表示時は閲覧権限付きで取得する．
+      const { data: urlData } = supabase.storage.from(MAP_IMAGE_BUCKET).getPublicUrl(path);
 
       // 3. maps テーブルに登録する
       //    .select().single() を付けないと，作成した行の id が返ってこない．
