@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import Icon from "./Icon.jsx";
 
 export default function ThreeDotMenu({
   label,
@@ -56,26 +57,16 @@ export default function ThreeDotMenu({
           event.stopPropagation();
           onToggle();
         }}
-        className="
-  grid h-8 w-8 place-items-center
-  rounded-full
-  text-xl leading-none text-slate-600
-  transition
-  hover:bg-slate-100
-  hover:text-slate-900
-  focus:outline-none
-  focus-visible:ring-2
-  focus-visible:ring-rose-400
-"
+        className="btn-icon"
       >
-        <span aria-hidden="true">⋮</span>
+        <Icon name="more" className="size-5" />
       </button>
 
       {isOpen && (
         <div
           role="menu"
           aria-label={label}
-          className="absolute right-0 top-11 z-50 min-w-44 rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl"
+          className="absolute right-0 top-full z-50 mt-1 w-max min-w-44 max-w-[calc(100vw-2rem)] rounded-xl border border-line bg-surface p-1 shadow-lg"
         >
           {children}
         </div>
@@ -84,9 +75,16 @@ export default function ThreeDotMenu({
   );
 }
 
+/**
+ * メニューの1項目．
+ *
+ * icon には Icon の name を渡す．アイコンの置き場所は icon が無くても必ず確保するので，
+ * アイコンのある項目と無い項目が同じメニューに並んでも，文字の始まる位置がずれない．
+ */
 export function MenuItem({
   children,
   onClick,
+  icon,
   danger = false,
   disabled = false,
 }) {
@@ -100,12 +98,15 @@ export function MenuItem({
         event.stopPropagation();
         onClick();
       }}
-      className={`w-full rounded-lg px-3 py-2.5 text-left text-sm font-medium transition disabled:opacity-50 ${
+      className={`flex min-h-11 w-full items-center gap-2 whitespace-nowrap rounded-lg px-3 text-left text-sm disabled:opacity-50 sm:min-h-9 ${
         danger
-          ? "text-red-600 hover:bg-red-50"
-          : "text-slate-700 hover:bg-rose-50"
+          ? "text-danger hover:bg-red-50"
+          : "text-ink hover:bg-ink/5"
       }`}
     >
+      <span className="grid size-4 shrink-0 place-items-center">
+        {icon && <Icon name={icon} />}
+      </span>
       {children}
     </button>
   );

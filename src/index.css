@@ -1,21 +1,50 @@
 @import "tailwindcss";
 
-:root {
-  font-family:
-    "Hiragino Sans",
-    "Yu Gothic",
-    "Noto Sans JP",
-    sans-serif;
+/*
+ * 色と部品の決めごと．
+ *
+ * 画面ごとに色コードや角丸を直接書くとばらつくので，ここに集める．
+ *   - 地の色は paper / surface，文字は ink / sub / faint，線は line / line-strong
+ *   - 強調色は accent の1色だけ（主ボタン・選択中・リンク）
+ *   - ボタンは .btn，入力欄は .field を使う
+ *
+ * 文字の大きさは次の5段階だけを使う（text-[15px] のような半端な値や，これ以外の段階は使わない）．
+ *   - text-xs   12px  補足・注釈・ラベル（.tag，日付，ヒント）
+ *   - text-sm   14px  本文とボタン（基本の大きさ）
+ *   - text-base 16px  カードのタイトル，スマホの入力欄（16px未満だとiOSが画面を拡大するため）
+ *   - text-lg   18px  小見出し（ロゴ，ダイアログの題，マップ詳細のタイトル）
+ *   - text-xl   20px  ページの見出し
+ * ピンの中の絵文字の大きさ（EmojiPin.jsx）は文字ではなく絵の大きさなので，この決まりの対象外．
+ *
+ * アイコンの大きさは components/Icon.jsx の冒頭に書いてある．
+ */
+@theme {
+  --color-paper: #fff7f8;
+  --color-surface: #ffffff;
+  --color-ink: #26221f;
+  --color-sub: #655e59;
+  --color-faint: #8f8781;
+  --color-line: #e5e0da;
+  --color-line-strong: #cdc6be;
+  --color-accent: #c9435e;
+  --color-accent-strong: #ad3149;
+  --color-accent-soft: #fbeef0;
+  --color-danger: #b3261e;
 
-  color: #3f3a3a;
-  background: #fffaf5;
+  --font-sans:
+    "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Yu Gothic", "Noto Sans JP",
+    system-ui, sans-serif;
+}
+
+:root {
+  color: var(--color-ink);
+  background: var(--color-paper);
+  -webkit-text-size-adjust: 100%;
 }
 
 body {
   margin: 0;
-  background:
-    radial-gradient(circle at top left, #fff1f1 0, transparent 28rem),
-    #fffaf5;
+  background: var(--color-paper);
 }
 
 button,
@@ -23,4 +52,159 @@ input,
 textarea,
 select {
   font: inherit;
+}
+
+button:not(:disabled),
+select:not(:disabled),
+label[for] {
+  cursor: pointer;
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+@layer base {
+  /*
+   * 押せるものは，ダブルタップでの拡大を止めてタップにすぐ反応させる．
+   * @layer base に入れているのは，ドラッグ中のピンに付ける touch-none などの指定を上書きしないため．
+   */
+  a,
+  button,
+  input,
+  select,
+  textarea,
+  label {
+    touch-action: manipulation;
+  }
+}
+
+@layer components {
+  /*
+   * ピンのパネルの高さの上限．
+   * スマホでは地図の下に並ぶので，画面の半分弱まで．--app-height は，キーボードが出ている間だけ
+   * 「実際に見えている高さ」が入る（lib/useKeyboardViewport.js）．
+   */
+  .pin-sheet {
+    max-height: calc(var(--app-height, 100dvh) * 0.46);
+  }
+  /* キーボードが出ている間は入力が主役なので，地図を細く残してパネルを広げる． */
+  :root[data-keyboard="open"] .pin-sheet {
+    max-height: calc(var(--app-height, 100dvh) - 10rem);
+  }
+  /* 広い画面では地図の右下に浮かぶので，地図の高さに収める． */
+  @media (width >= 40rem) {
+    .pin-sheet,
+    :root[data-keyboard="open"] .pin-sheet {
+      max-height: calc(100% - 6rem);
+    }
+  }
+
+  /* 画像を読み込んでいる間の仮の面．動きを減らす設定の端末では点滅させない． */
+  .skeleton {
+    @apply animate-pulse bg-line motion-reduce:animate-none;
+  }
+
+  /*
+   * ボタン．スマホでは指で押しやすい高さ（44px）にし，PCでは少し詰める．
+   * マウスを乗せたときの色（:hover）は，マウスなどで「乗せる」ができる端末だけに付ける（@media (hover: hover)）．
+   * スマホでは，指で押したあとに :hover の色が残り，ほかの場所を触るまで消えないため．
+   * （Tailwind の hover: も同じ条件で効くので，画面側で書く hover: はそのままでよい）
+   */
+  .btn {
+    @apply inline-flex min-h-11 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg border border-line-strong bg-surface px-3.5 text-sm font-medium text-ink transition-colors sm:min-h-9 sm:px-3;
+  }
+  @media (hover: hover) {
+    .btn:hover:not(:disabled) {
+      @apply bg-paper;
+    }
+  }
+  .btn:disabled {
+    @apply cursor-not-allowed opacity-50;
+  }
+
+  .btn-primary {
+    @apply border-accent bg-accent font-bold text-white;
+  }
+  @media (hover: hover) {
+    .btn-primary:hover:not(:disabled) {
+      @apply border-accent-strong bg-accent-strong;
+    }
+  }
+
+  .btn-quiet {
+    @apply border-transparent bg-transparent text-sub;
+  }
+  @media (hover: hover) {
+    .btn-quiet:hover:not(:disabled) {
+      @apply bg-ink/5 text-ink;
+    }
+  }
+
+  .btn-danger {
+    @apply text-danger;
+  }
+  @media (hover: hover) {
+    .btn-danger:hover:not(:disabled) {
+      @apply border-danger/40 bg-red-50;
+    }
+  }
+
+  /* 補助的な小さいボタン．PCでの見た目だけ小さくし，スマホの押しやすさは保つ． */
+  .btn-sm {
+    @apply sm:min-h-8 sm:px-2.5 sm:text-xs;
+  }
+
+  /* アイコンだけのボタン */
+  .btn-icon {
+    @apply inline-grid size-11 shrink-0 place-items-center rounded-lg text-sub transition-colors sm:size-9;
+  }
+  @media (hover: hover) {
+    .btn-icon:hover:not(:disabled) {
+      @apply bg-ink/5 text-ink;
+    }
+  }
+  .btn-icon:disabled {
+    @apply cursor-not-allowed opacity-40;
+  }
+
+  /* 入力欄．スマホでは16px以上にして，iOSで入力時に画面が勝手に拡大されるのを防ぐ． */
+  .field {
+    @apply w-full min-w-0 rounded-lg border border-line-strong bg-surface px-3 py-2 text-base text-ink outline-none transition-colors placeholder:text-faint sm:text-sm;
+  }
+  .field:focus {
+    @apply border-accent ring-2 ring-accent/20;
+  }
+  .field:disabled {
+    @apply bg-paper text-faint;
+  }
+
+  /*
+   * 選択欄の右の矢印．ブラウザ任せだと，矢印の形も端からの距離もOSごとに違ってしまうので，
+   * 自前の矢印（Icon.jsx の chevronDown と同じ形）を，入力欄の左右の余白と同じ位置に置く．
+   */
+  select.field {
+    @apply appearance-none pr-9;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23655e59' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.75rem center;
+    background-size: 1rem;
+  }
+
+  .label {
+    @apply block text-sm font-medium text-ink;
+  }
+
+  .notice-error {
+    @apply rounded-lg bg-red-50 px-3 py-2 text-sm text-danger;
+  }
+
+  /* 公開範囲などの小さなラベル */
+  .tag {
+    @apply inline-flex shrink-0 items-center rounded border border-line px-1.5 py-0.5 text-xs font-medium leading-none text-sub;
+  }
+  .tag-private {
+    @apply border-amber-200 bg-amber-50 text-amber-900;
+  }
 }

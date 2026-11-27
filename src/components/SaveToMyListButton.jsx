@@ -1,5 +1,8 @@
 import { useEffect, useState } from "react";
 import { supabase } from "../lib/supabase";
+import { notifySavedMapsChanged, subscribeSavedMapsChanged } from "../lib/savedMaps.js";
+import Icon from "./Icon.jsx";
+import { showToast } from "../lib/toast.js";
 
 const SAVE_TARGETS = {
     map: {
@@ -17,14 +20,20 @@ export default function SaveToMyListButton({
     itemId,
     ownerId,
     currentUser,
+    onSavedChange,
+    // "button"：文字のボタン（マップ詳細・フォルダ）．"icon"：ブックマークのアイコンだけ（一覧のカード）
+    variant = "button",
 }) {
     const [saved, setSaved] = useState(false);
     const [checkingSaved, setCheckingSaved] = useState(false);
     const [saving, setSaving] = useState(false);
     const [saveError, setSaveError] = useState("");
+    const [saveVersion, setSaveVersion] = useState(0);
 
     const target = SAVE_TARGETS[itemType];
     const isOwner = currentUser?.id === ownerId;
+
+    useEffect(() => subscribeSavedMapsChanged(() => setSaveVersion((version) => version + 1)), []);
 
     useEffect(() => {
         let cancelled = false;
@@ -83,12 +92,11 @@ export default function SaveToMyListButton({
         return () => {
             cancelled = true;
         };
-    }, [currentUser, isOwner, itemId, target]);
+    }, [currentUser, isOwner, itemId, target, saveVersion]);
 
     async function handleSave() {
         if (
             saving ||
-            saved ||
             checkingSaved ||
             !target ||
             !itemId
@@ -114,9 +122,12 @@ export default function SaveToMyListButton({
                 [target.idColumn]: itemId,
             };
 
-            const { error } = await supabase
-                .from(target.table)
-                .upsert(values, {
+            const removing = saved && itemType === "map";
+            if (saved && !removing) return;
+            const { error } = removing
+                ? await supabase.from(target.table).delete()
+                    .eq("user_id", currentUser.id).eq(target.idColumn, itemId)
+                : await supabase.from(target.table).upsert(values, {
                     onConflict: `user_id,${target.idColumn}`,
                     ignoreDuplicates: true,
                 });
@@ -124,10 +135,13 @@ export default function SaveToMyListButton({
             if (error) {
                 console.error("保存に失敗", error);
                 setSaveError(`保存に失敗しました。${error.message}`);
+                if (variant === "icon") showToast(removing ? "保存を解除できませんでした。" : "一覧に保存できませんでした。", { tone: "error" });
                 return;
             }
 
-            setSaved(true);
+            setSaved(!removing);
+            if (itemType === "map") notifySavedMapsChanged(itemId, !removing);
+            onSavedChange?.(!removing);
         } catch (unexpectedError) {
             console.error(
                 "保存中に予期しないエラー",
@@ -137,6 +151,7 @@ export default function SaveToMyListButton({
                 `予期しないエラーが発生しました。${unexpectedError?.message ?? unexpectedError
                 }`,
             );
+            if (variant === "icon") showToast("保存できませんでした。もう一度お試しください。", { tone: "error" });
         } finally {
             setSaving(false);
         }
@@ -151,9 +166,29 @@ export default function SaveToMyListButton({
     if (checkingSaved) {
         buttonLabel = "確認中...";
     } else if (saving) {
-        buttonLabel = "保存中...";
+        buttonLabel = saved && itemType === "map" ? "解除中..." : "保存中...";
     } else if (saved) {
-        buttonLabel = "保存済み";
+        buttonLabel = itemType === "map" ? "保存解除" : "保存済み";
+    }
+
+    // アイコンだけのブックマークボタン（一覧のカード用．X のブックマークと同じく，押すたびに保存と解除が切り替わる）．
+    // 保存済みは塗りつぶし．カードには文言を出す場所がないので，失敗したときは画面上部の通知で伝える．
+    if (variant === "icon") {
+        if (itemType !== "map") return null;
+        const iconLabel = saved ? "自分のマップ一覧から保存を解除" : "自分のマップ一覧に保存";
+        return (
+            <button
+                type="button"
+                onClick={handleSave}
+                disabled={checkingSaved || saving}
+                aria-pressed={saved}
+                aria-label={iconLabel}
+                title={saved ? "保存を解除" : "一覧に保存"}
+                className={`btn-icon ${saved ? "text-ink" : "text-line-strong hover:text-sub"}`}
+            >
+                <Icon name="bookmark" filled={saved} className="size-5" />
+            </button>
+        );
     }
 
     return (
@@ -161,12 +196,8 @@ export default function SaveToMyListButton({
             <button
                 type="button"
                 onClick={handleSave}
-                disabled={checkingSaved || saving || saved}
-                className={
-                    saved
-                        ? "cursor-default rounded-md bg-slate-200 px-3 py-1.5 text-xs font-medium text-slate-500"
-                        : "rounded-md bg-rose-500 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-rose-600 disabled:cursor-not-allowed disabled:bg-slate-300"
-                }
+                disabled={checkingSaved || saving || (saved && itemType !== "map")}
+                className={saved ? "btn btn-sm" : "btn btn-sm btn-primary"}
             >
                 {buttonLabel}
             </button>
@@ -174,7 +205,7 @@ export default function SaveToMyListButton({
             {saveError && (
                 <p
                     role="alert"
-                    className="absolute right-0 top-full z-20 mt-2 w-72 max-w-[80vw] rounded bg-red-50 px-3 py-2 text-sm text-red-700 shadow-md"
+                    className="notice-error absolute right-0 top-full z-20 mt-2 w-72 max-w-[80vw] shadow-md"
                 >
                     {saveError}
                 </p>

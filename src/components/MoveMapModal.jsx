@@ -48,7 +48,7 @@ export default function MoveMapModal({
     .sort((a, b) => a.label.localeCompare(b.label, "ja"));
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-4 sm:items-center">
       <form
         onSubmit={(event) => {
           event.preventDefault();
@@ -57,19 +57,19 @@ export default function MoveMapModal({
             onMove();
           }
         }}
-        className="w-full max-w-md rounded-lg bg-white p-6 shadow-xl"
+        className="w-full max-w-md rounded-xl bg-surface p-5 shadow-xl"
       >
-        <h3 className="text-lg font-bold text-slate-800">
+        <h3 className="text-lg font-bold text-ink">
           マップを移動
         </h3>
 
-        <p className="mt-1 text-sm text-slate-600">
+        <p className="mt-1 break-words text-sm text-sub">
           「{map.title}」の移動先を選んでください。
         </p>
 
         <label
           htmlFor="move-destination"
-          className="mt-4 block text-sm font-medium text-slate-700"
+          className="label mt-4"
         >
           移動先
         </label>
@@ -81,7 +81,7 @@ export default function MoveMapModal({
             onDestinationChange(event.target.value)
           }
           disabled={moving}
-          className="mt-1 w-full rounded border border-slate-300 px-3 py-2 disabled:bg-slate-100"
+          className="field mt-1"
         >
           <option value="">ホーム（フォルダに入れない）</option>
 
@@ -93,7 +93,7 @@ export default function MoveMapModal({
         </select>
 
         {error && (
-          <p className="mt-3 rounded bg-red-50 p-2 text-sm text-red-700">
+          <p className="notice-error mt-3">
             {error}
           </p>
         )}
@@ -103,7 +103,7 @@ export default function MoveMapModal({
             type="button"
             onClick={onCancel}
             disabled={moving}
-            className="rounded border border-slate-300 px-4 py-2 text-sm text-slate-700 disabled:opacity-50"
+            className="btn"
           >
             キャンセル
           </button>
@@ -111,7 +111,7 @@ export default function MoveMapModal({
           <button
             type="submit"
             disabled={moving || isSameDestination}
-            className="rounded bg-blue-600 px-4 py-2 text-sm text-white disabled:cursor-not-allowed disabled:bg-slate-300"
+            className="btn btn-primary"
           >
             {moving ? "移動中..." : "移動"}
           </button>
