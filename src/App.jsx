@@ -23,6 +23,7 @@ import { useKeyboardViewport } from "./lib/useKeyboardViewport.js";
 // issue #28 用のテストページ追加
 import TestMapView from "./pages/TestMapView.jsx";
 import NotFound from "./pages/NotFound.jsx";
+import HowToUse from "./pages/HowToUse.jsx";
 
 /**
  * アプリ全体の入れ物．
@@ -126,6 +127,14 @@ export default function App() {
             新しいマップ
           </button>
         )}
+        
+        <Link
+          to="/how-to-use"
+          className="shrink-0 rounded-lg px-3 py-2 text-sm text-sub hover:bg-ink/5 hover:text-ink"
+        >
+          使い方
+        </Link>
+
         {/* 未ログインのトップは画面中央にログイン欄があるので，ヘッダーには重ねて出さない */}
         {!(authChecked && !currentUser && location.pathname === "/") && <AuthButton />}
       </header>
@@ -133,6 +142,7 @@ export default function App() {
       <main className="min-h-0 min-w-0 flex-1 overflow-x-hidden">
         <Routes>
           <Route path="/" element={mapList} />
+          <Route path="/how-to-use" element={<HowToUse />} />
           <Route path="/public-maps" element={<MapList key={`public-${accessKey}`} currentUser={currentUser} authChecked={authChecked} isAdmin={isAdmin} publicOnly />} />
           <Route path="/folders/:folderId" element={mapList} />
           <Route path="/maps/new" element={<MapUpload />} />
